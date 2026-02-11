@@ -6,40 +6,46 @@
     
     <meta property="og:title" content="Living Life MMO - Quest Template" />
     <meta property="og:description" content="A custom quest template has been shared with you! Click to import it into Living Life MMO." />
-    <meta property="og:image" content="https://raw.githubusercontent.com/Qn8r/Questify/main/app_icon.png" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://qn8r.github.io/Questify/" />
     
     <title>Living Life MMO - Quest Template</title>
     <style>
         body { background-color: #0E0F12; color: #E8EAF0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .loader { border: 4px solid #171A1F; border-top: 4px solid #FFD54A; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px;}
+        .container { text-align: center; padding: 20px; }
+        .loader { border: 4px solid #171A1F; border-top: 4px solid #FFD54A; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 20px auto;}
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        .container { text-align: center; }
+        .btn { background-color: #FFD54A; color: #000; font-weight: bold; border: none; padding: 15px 30px; border-radius: 8px; font-size: 16px; cursor: pointer; text-decoration: none; display: inline-block; margin-top: 20px; }
+        .btn:active { opacity: 0.8; }
+        .store-link { color: #E8EAF0; opacity: 0.5; font-size: 12px; display: block; margin-top: 20px; text-decoration: underline; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="loader"></div>
         <h2>Equipping Quests...</h2>
+        <p style="opacity: 0.7; font-size: 14px;">If the app doesn't open automatically, tap below:</p>
+        
+        <a id="importBtn" href="#" class="btn">Open in App</a>
+        
+        <a id="storeBtn" href="https://play.google.com/store/apps/details?id=com.example.livinglifemmo" class="store-link">I don't have the app yet</a>
     </div>
 
     <script>
-        // 1. Grab the template data from the web link
+        // 1. Grab the template data
         const urlParams = new URLSearchParams(window.location.search);
         const templateData = urlParams.get('data');
 
         // 2. Build the secret internal app link
         const appLink = "livinglife://import?data=" + encodeURIComponent(templateData || "");
 
-        // 3. Try to force the phone to open the app
-        window.location.replace(appLink);
+        // 3. Update the button to use the deep link
+        document.getElementById("importBtn").href = appLink;
 
-        // 4. If the app doesn't open after 1.5 seconds (meaning it's not installed), go to the Play Store
-        setTimeout(function() {
-            // Replace this with your actual Google Play Store link later
-            window.location.replace("https://play.google.com/store/apps/details?id=com.example.livinglifemmo");
-        }, 1500);
+        // 4. Try the automatic jump (might be blocked by WhatsApp/Chrome)
+        window.location.href = appLink;
+
+        // 5. We removed the strict timeout to the Play Store so the user has time to click the button if the auto-jump fails!
     </script>
 </body>
 </html>
