@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Living Life MMO - Quest Template</title>
+    <style>
+        body { background-color: #0E0F12; color: #E8EAF0; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .loader { border: 4px solid #171A1F; border-top: 4px solid #FFD54A; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 20px;}
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .container { text-align: center; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="loader"></div>
+        <h2>Equipping Quests...</h2>
+    </div>
+
+    <script>
+        // 1. Grab the template data from the web link
+        const urlParams = new URLSearchParams(window.location.search);
+        const templateData = urlParams.get('data');
+
+        // 2. Build the secret internal app link
+        const appLink = "livinglife://import?data=" + encodeURIComponent(templateData || "");
+
+        // 3. Try to force the phone to open the app
+        window.location.replace(appLink);
+
+        // 4. If the app doesn't open after 1.5 seconds (meaning it's not installed), go to the Play Store
+        setTimeout(function() {
+            // NOTE: Replace this with your actual Google Play Store link later!
+            window.location.replace("https://play.google.com/store/apps/details?id=com.example.livinglifemmo");
+        }, 1500);
+    </script>
+</body>
+</html>
