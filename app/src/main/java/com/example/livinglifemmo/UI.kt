@@ -1142,10 +1142,14 @@ fun MainQuestsScreen(
                 group.sortedBy { it.index }
             }
             sorted.forEachIndexed { i, p ->
+                val explicitPrereq = p.quest.prerequisiteId
+                val explicitPrereqInFamily = explicitPrereq != null && sorted.any { it.quest.id == explicitPrereq }
                 prereqMap[p.quest.id] = if (tiered.size >= 2) {
-                    if (i > 0) sorted[i - 1].quest.id else null
+                    if (i == 0) null
+                    else if (explicitPrereqInFamily) explicitPrereq
+                    else sorted[i - 1].quest.id
                 } else {
-                    p.quest.prerequisiteId
+                    explicitPrereq
                 }
             }
             val orderedFamily = sorted.map { it.quest }
@@ -2231,6 +2235,7 @@ fun SettingsScreen(
     fontScalePercent: Int,
     appLanguage: String,
     backgroundImageUri: String?,
+    backgroundImageTransparencyPercent: Int,
     journalName: String,
     textColorOverride: Color?,
     appBackgroundColorOverride: Color?,
@@ -2274,6 +2279,7 @@ fun SettingsScreen(
     onJournalNameChanged: (String) -> Unit,
     onTextColorChanged: (Color?) -> Unit,
     onBackgroundImageChanged: (String?) -> Unit,
+    onBackgroundImageTransparencyPercentChanged: (Int) -> Unit,
     onAppBackgroundColorChanged: (Color?) -> Unit,
     onChromeBackgroundColorChanged: (Color?) -> Unit,
     onCardColorChanged: (Color?) -> Unit,
@@ -2338,6 +2344,7 @@ fun SettingsScreen(
         var advancedTemplateJsonDraft by rememberSaveable { mutableStateOf("") }
         var advancedTemplateRequestDraft by rememberSaveable { mutableStateOf("") }
         var advancedTemplateGeneratedPrompt by rememberSaveable { mutableStateOf("") }
+        var backgroundMode by rememberSaveable(backgroundImageUri) { mutableStateOf(if (backgroundImageUri.isNullOrBlank()) "color" else "image") }
         val feedbackCategories = remember { listOf("Bug", "UI/UX", "Feature Request", "Performance", "General") }
         val tabGameplay = stringResource(R.string.tab_gameplay)
         val tabAppearance = stringResource(R.string.tab_appearance)
@@ -2809,29 +2816,84 @@ fun SettingsScreen(
                                 CardBlock {
                                     SettingsSubheading(stringResource(R.string.settings_personalization))
                                     SettingsHint(stringResource(R.string.settings_personalization_hint))
-                                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(54.dp)
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(SubtlePanel)
-                                                .border(1.dp, OnCardText.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
-                                                .clickable { bgPicker.launch(arrayOf("image/*")) },
-                                            contentAlignment = Alignment.Center
-                                        ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        FilterChip(
+                                            selected = backgroundMode == "image",
+                                            onClick = {
+                                                backgroundMode = "image"
+                                                onAppBackgroundColorChanged(null)
+                                            },
+                                            label = { Text("Image") }
+                                        )
+                                        FilterChip(
+                                            selected = backgroundMode == "color",
+                                            onClick = {
+                                                backgroundMode = "color"
+                                                onBackgroundImageChanged(null)
+                                            },
+                                            label = { Text("Color") }
+                                        )
+                                    }
+                                    Spacer(Modifier.height(10.dp))
+                                    if (backgroundMode == "image") {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(54.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(SubtlePanel)
+                                                    .border(1.dp, OnCardText.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                                                    .clickable { bgPicker.launch(arrayOf("image/*")) },
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (!backgroundImageUri.isNullOrBlank()) {
+                                                    AsyncImage(model = backgroundImageUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
+                                                } else {
+                                                    Icon(Icons.Default.AddPhotoAlternate, null, tint = OnCardText.copy(alpha = 0.7f))
+                                                }
+                                            }
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(if (backgroundImageUri.isNullOrBlank()) stringResource(R.string.settings_no_bg) else stringResource(R.string.settings_bg_set), color = OnCardText, fontSize = 12.sp)
+                                                Text(if (backgroundImageUri.isNullOrBlank()) stringResource(R.string.settings_tap_to_pick) else stringResource(R.string.settings_tap_to_replace), color = OnCardText.copy(alpha = 0.6f), fontSize = 11.sp)
+                                            }
                                             if (!backgroundImageUri.isNullOrBlank()) {
-                                                AsyncImage(model = backgroundImageUri, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
-                                            } else {
-                                                Icon(Icons.Default.AddPhotoAlternate, null, tint = OnCardText.copy(alpha = 0.7f))
+                                                TextButton(onClick = { SoundManager.playClick(); onBackgroundImageChanged(null) }) { Text(stringResource(R.string.clear), color = Color(0xFFE57373)) }
                                             }
                                         }
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(if (backgroundImageUri.isNullOrBlank()) stringResource(R.string.settings_no_bg) else stringResource(R.string.settings_bg_set), color = OnCardText, fontSize = 12.sp)
-                                            Text(if (backgroundImageUri.isNullOrBlank()) stringResource(R.string.settings_tap_to_pick) else stringResource(R.string.settings_tap_to_replace), color = OnCardText.copy(alpha = 0.6f), fontSize = 11.sp)
+                                    } else {
+                                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(54.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .background(appBackgroundColorOverride ?: themeDefaultBg)
+                                                    .border(1.dp, OnCardText.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
+                                                    .clickable { colorPickerTarget = "app_bg" }
+                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text("Background color", color = OnCardText, fontSize = 12.sp)
+                                                Text("Tap swatch to pick", color = OnCardText.copy(alpha = 0.6f), fontSize = 11.sp)
+                                            }
+                                            if (appBackgroundColorOverride != null) {
+                                                TextButton(onClick = { SoundManager.playClick(); onAppBackgroundColorChanged(null) }) { Text(stringResource(R.string.clear), color = Color(0xFFE57373)) }
+                                            }
                                         }
-                                        if (!backgroundImageUri.isNullOrBlank()) {
-                                            TextButton(onClick = { SoundManager.playClick(); onBackgroundImageChanged(null) }) { Text(stringResource(R.string.clear), color = Color(0xFFE57373)) }
+                                    }
+                                    if (backgroundMode == "image") {
+                                        Spacer(Modifier.height(8.dp))
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text("Background transparency", color = OnCardText, fontSize = 12.sp)
+                                            Text("${backgroundImageTransparencyPercent.coerceIn(0, 100)}%", color = OnCardText.copy(alpha = 0.75f), fontSize = 11.sp)
                                         }
+                                        Slider(
+                                            value = backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f,
+                                            onValueChange = { onBackgroundImageTransparencyPercentChanged((it * 100f).roundToInt().coerceIn(0, 100)) },
+                                            valueRange = 0f..1f
+                                        )
                                     }
                                 }
                                 CardBlock {
@@ -3064,7 +3126,7 @@ fun SettingsScreen(
                             "advanced_templates" -> {
                                 CardBlock {
                                     SettingsSubheading("Advanced Templates")
-                                    SettingsHint("Option 1: Download starter JSON, send it to AI with your request, then upload/paste the returned JSON here.\nOption 2: Write your goal below, copy the generated prompt to AI, then paste the AI JSON result here.\nLimits: daily up to 500 total, main up to 200 total.")
+                                    SettingsHint("Option 1: Write your goal, generate/copy prompt, send it to AI, then paste the returned JSON and analyze.\nOption 2: Download starter JSON, send it to AI with your request, then upload/paste the returned JSON and analyze.\nLimits: daily up to 500 total, main up to 200 total, shop items up to 120 total.")
                                     val sectionShape = RoundedCornerShape(14.dp)
                                     val sectionBorder = OnCardText.copy(alpha = 0.18f)
                                     val sectionBg = OnCardText.copy(alpha = 0.03f)
@@ -3078,23 +3140,7 @@ fun SettingsScreen(
                                             .padding(10.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        SettingsSubheading("1) Starter File")
-                                        OutlinedButton(
-                                            onClick = { advancedTemplateExportLauncher.launch("questify_advanced_template.json") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF26A69A))
-                                        ) { Text("Download Starter JSON", maxLines = 1) }
-                                    }
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(sectionShape)
-                                            .background(sectionBg)
-                                            .border(1.dp, sectionBorder, sectionShape)
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        SettingsSubheading("2) Build Prompt")
+                                        SettingsSubheading("Option 1) Build Prompt")
                                         OutlinedTextField(
                                             value = advancedTemplateRequestDraft,
                                             onValueChange = { advancedTemplateRequestDraft = it.take(700) },
@@ -3104,7 +3150,7 @@ fun SettingsScreen(
                                             label = { Text("Tell AI your quest goal") },
                                             placeholder = {
                                                 Text(
-                                                    "Example: Generate 100 daily quests in Saitama style.",
+                                                    "Example: Generate 120 daily quests, 40 main quests, and 24 shop items in Saitama-style anime progression with a colorful neon vibe. Use a bright aqua accent and matching UI colors.",
                                                     fontSize = 14.sp,
                                                     color = OnCardText.copy(alpha = 0.42f)
                                                 )
@@ -3112,6 +3158,8 @@ fun SettingsScreen(
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedTextColor = OnCardText,
                                                 unfocusedTextColor = OnCardText,
+                                                focusedLabelColor = OnCardText.copy(alpha = 0.48f),
+                                                unfocusedLabelColor = OnCardText.copy(alpha = 0.48f),
                                                 cursorColor = accentStrong
                                             )
                                         )
@@ -3148,12 +3196,7 @@ fun SettingsScreen(
                                             .padding(10.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        SettingsSubheading("3) Paste + Analyze")
-                                        OutlinedButton(
-                                            onClick = { advancedTemplateImportLauncher.launch(arrayOf("application/json", "text/plain")) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF7C8BFF))
-                                        ) { Text("Upload JSON File", maxLines = 1) }
+                                        SettingsSubheading("Option 1) Paste JSON")
                                         OutlinedTextField(
                                             value = advancedTemplateJsonDraft,
                                             onValueChange = { advancedTemplateJsonDraft = it },
@@ -3165,15 +3208,38 @@ fun SettingsScreen(
                                             colors = OutlinedTextFieldDefaults.colors(
                                                 focusedTextColor = OnCardText,
                                                 unfocusedTextColor = OnCardText,
+                                                focusedLabelColor = OnCardText.copy(alpha = 0.48f),
+                                                unfocusedLabelColor = OnCardText.copy(alpha = 0.48f),
                                                 cursorColor = accentStrong
                                             )
                                         )
-                                        Button(
-                                            onClick = { advancedTemplateImportResult = onImportAdvancedTemplateJson(advancedTemplateJsonDraft) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.buttonColors(containerColor = accentStrong, contentColor = Color.Black)
-                                        ) { Text("Analyze & Create Template", fontWeight = FontWeight.Bold) }
                                     }
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(sectionShape)
+                                            .background(sectionBg)
+                                            .border(1.dp, sectionBorder, sectionShape)
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SettingsSubheading("Option 2) Starter File")
+                                        OutlinedButton(
+                                            onClick = { advancedTemplateExportLauncher.launch("questify_advanced_template.json") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF26A69A))
+                                        ) { Text("Download Starter JSON", maxLines = 1) }
+                                        OutlinedButton(
+                                            onClick = { advancedTemplateImportLauncher.launch(arrayOf("application/json", "text/plain")) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF7C8BFF))
+                                        ) { Text("Upload JSON File", maxLines = 1) }
+                                    }
+                                    Button(
+                                        onClick = { advancedTemplateImportResult = onImportAdvancedTemplateJson(advancedTemplateJsonDraft) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = accentStrong, contentColor = Color.Black)
+                                    ) { Text("Analyze & Create Template", fontWeight = FontWeight.Bold) }
                                     Text(
                                         "Prompt tip: ask AI to return a downloadable file named questify_advanced_template.json (or raw JSON only if files are not supported).",
                                         color = OnCardText.copy(alpha = 0.68f),
@@ -4314,12 +4380,14 @@ fun CommunityScreen(
                                     modifier = centeredField,
                                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                                     keyboardActions = KeyboardActions(onDone = { onChangeUserName(displayNameDraft) }),
-                                    colors = OutlinedTextFieldDefaults.colors(
-                                        focusedTextColor = OnCardText,
-                                        unfocusedTextColor = OnCardText,
-                                        cursorColor = accentStrong
-                                    )
-                                )
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = OnCardText,
+                                                unfocusedTextColor = OnCardText,
+                                                focusedLabelColor = OnCardText.copy(alpha = 0.48f),
+                                                unfocusedLabelColor = OnCardText.copy(alpha = 0.48f),
+                                                cursorColor = accentStrong
+                                            )
+                                        )
                                 OutlinedTextField(value = publishTitle, onValueChange = { publishTitle = it }, enabled = false, label = { Text(stringResource(R.string.comm_challenge_title), color = OnCardText.copy(alpha = 0.6f)) }, singleLine = true, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
                                 OutlinedTextField(value = publishDesc, onValueChange = { publishDesc = it }, enabled = false, label = { Text(stringResource(R.string.comm_description), color = OnCardText.copy(alpha = 0.6f)) }, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
                                 OutlinedTextField(value = publishTags, onValueChange = { publishTags = it }, enabled = false, label = { Text(stringResource(R.string.comm_tags_hint), color = OnCardText.copy(alpha = 0.6f)) }, singleLine = true, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))

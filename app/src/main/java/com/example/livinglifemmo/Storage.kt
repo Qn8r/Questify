@@ -130,6 +130,7 @@ object Keys {
     val FONT_STYLE = stringPreferencesKey("font_style")
     val FONT_SCALE_PERCENT = intPreferencesKey("font_scale_percent")
     val BACKGROUND_IMAGE_URI = stringPreferencesKey("background_image_uri")
+    val BACKGROUND_IMAGE_TRANSPARENCY_PERCENT = intPreferencesKey("background_image_transparency_percent")
     val TEXT_COLOR_ARGB = intPreferencesKey("text_color_argb")
     val APP_BACKGROUND_ARGB = intPreferencesKey("app_background_argb")
     val CHROME_BACKGROUND_ARGB = intPreferencesKey("chrome_background_argb")
@@ -517,7 +518,31 @@ fun deserializeSavedTemplates(json: String?): List<GameTemplate> {
     if (json.isNullOrBlank()) return emptyList()
     return try {
         val type = object : com.google.gson.reflect.TypeToken<List<GameTemplate>>() {}.type
-        gson.fromJson(json, type) ?: emptyList()
+        val parsed: List<GameTemplate> = gson.fromJson(json, type) ?: emptyList()
+        parsed.mapNotNull { template ->
+            runCatching {
+                val name = runCatching { template.templateName }.getOrDefault("Imported Template").ifBlank { "Imported Template" }
+                val theme = runCatching { template.appTheme }.getOrDefault(AppTheme.DEFAULT)
+                val dailies = runCatching { template.dailyQuests }.getOrDefault(emptyList())
+                val mains = runCatching { template.mainQuests }.getOrDefault(emptyList())
+                val shop = runCatching { template.shopItems }.getOrDefault(emptyList())
+                val pkg = runCatching { template.packageId }.getOrDefault("").ifBlank { java.util.UUID.randomUUID().toString() }
+                val settings = runCatching { template.templateSettings }.getOrNull()
+                val accent = runCatching { template.accentArgb }.getOrNull()
+                val premium = runCatching { template.isPremium }.getOrDefault(false)
+                GameTemplate(
+                    templateName = name,
+                    appTheme = theme,
+                    dailyQuests = dailies,
+                    mainQuests = mains,
+                    shopItems = shop,
+                    packageId = pkg,
+                    templateSettings = settings,
+                    accentArgb = accent,
+                    isPremium = premium
+                )
+            }.getOrNull()
+        }
     } catch (e: Exception) {
         emptyList()
     }

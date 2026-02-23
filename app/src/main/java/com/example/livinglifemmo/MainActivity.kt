@@ -190,6 +190,8 @@ fun AppRoot(appContext: Context) {
     var fontStyle by remember { mutableStateOf(AppFontStyle.DEFAULT) }
     var fontScalePercent by remember { mutableIntStateOf(100) }
     var appLanguage by remember { mutableStateOf("system") }
+    var backgroundImageUri by remember { mutableStateOf<String?>(null) }
+    var backgroundImageTransparencyPercent by remember { mutableIntStateOf(78) }
     var textColorOverride by remember { mutableStateOf<Color?>(null) }
     var appTheme by remember { mutableStateOf(if (systemPrefersDark) AppTheme.DEFAULT else AppTheme.LIGHT) }
     var accent by remember { mutableStateOf(AccentBurntOrange) }
@@ -226,11 +228,13 @@ fun AppRoot(appContext: Context) {
     val drawerBg = remember(defaultChromeBg, chromeBackgroundColorOverride) {
         chromeBackgroundColorOverride ?: defaultChromeBg
     }
-    val navBarBg = remember(drawerBg, chromeBackgroundColorOverride, isThemeBgLight) {
+    val navBarBg = remember(drawerBg, chromeBackgroundColorOverride, isThemeBgLight, backgroundImageUri, backgroundImageTransparencyPercent) {
+        val imageBlend = if (backgroundImageUri.isNullOrBlank()) 0f else (backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f)
+        val targetAlpha = (0.96f - (imageBlend * 0.18f)).coerceIn(0.74f, 0.96f)
         chromeBackgroundColorOverride ?: if (isThemeBgLight) {
-            mixForBackground(Color(0xFFBDCCE3), drawerBg).copy(alpha = 0.96f)
+            mixForBackground(Color(0xFFBDCCE3), drawerBg).copy(alpha = targetAlpha)
         } else {
-            mixForBackground(Color(0xFF03060B), drawerBg).copy(alpha = 0.95f)
+            mixForBackground(Color(0xFF03060B), drawerBg).copy(alpha = targetAlpha)
         }
     }
     val drawerContentColor = remember(drawerBg) {
@@ -246,7 +250,6 @@ fun AppRoot(appContext: Context) {
     var customTemplates by remember { mutableStateOf<List<CustomTemplate>>(emptyList()) }
     var pendingUncheckQuestId by remember { mutableStateOf<Int?>(null) }
     var showFocusTimer by remember { mutableStateOf(false) }
-    var backgroundImageUri by remember { mutableStateOf<String?>(null) }
     var resetBackupBefore by remember { mutableStateOf(false) }
     var resetBackupName by remember { mutableStateOf("Pre-reset backup") }
     var unlockedAchievementIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -337,6 +340,7 @@ fun AppRoot(appContext: Context) {
             fontStyle = fontStyle,
             fontScalePercent = fontScalePercent,
             backgroundImageUri = backgroundImageUri,
+            backgroundImageTransparencyPercent = backgroundImageTransparencyPercent.coerceIn(0, 100),
             textColorArgb = textColorOverride?.toArgbCompat()?.toLong(),
             appBackgroundArgb = appBackgroundColorOverride?.toArgbCompat()?.toLong(),
             chromeBackgroundArgb = chromeBackgroundColorOverride?.toArgbCompat()?.toLong(),
@@ -381,13 +385,14 @@ fun AppRoot(appContext: Context) {
         fontStyle = settings.fontStyle
         fontScalePercent = settings.fontScalePercent.coerceIn(80, 125)
         backgroundImageUri = settings.backgroundImageUri
-        textColorOverride = settings.textColorArgb?.let { Color(it) }
-        appBackgroundColorOverride = settings.appBackgroundArgb?.let { Color(it) }
-        chromeBackgroundColorOverride = settings.chromeBackgroundArgb?.let { Color(it) }
-        cardColorOverride = settings.cardColorArgb?.let { Color(it) }
-        buttonColorOverride = settings.buttonColorArgb?.let { Color(it) }
-        journalPageColorOverride = settings.journalPageColorArgb?.let { Color(it) }
-        journalAccentColorOverride = settings.journalAccentColorArgb?.let { Color(it) }
+        backgroundImageTransparencyPercent = (settings.backgroundImageTransparencyPercent ?: backgroundImageTransparencyPercent).coerceIn(0, 100)
+        textColorOverride = settings.textColorArgb?.let { Color(it.toInt()) }
+        appBackgroundColorOverride = settings.appBackgroundArgb?.let { Color(it.toInt()) }
+        chromeBackgroundColorOverride = settings.chromeBackgroundArgb?.let { Color(it.toInt()) }
+        cardColorOverride = settings.cardColorArgb?.let { Color(it.toInt()) }
+        buttonColorOverride = settings.buttonColorArgb?.let { Color(it.toInt()) }
+        journalPageColorOverride = settings.journalPageColorArgb?.let { Color(it.toInt()) }
+        journalAccentColorOverride = settings.journalAccentColorArgb?.let { Color(it.toInt()) }
         journalName = settings.journalName.ifBlank { "Journal" }
     }
 
@@ -593,6 +598,7 @@ fun AppRoot(appContext: Context) {
         dump["settings_theme"] = appTheme.name
         dump["settings_accent"] = accent.toArgbCompat().toString()
         dump["settings_bg"] = backgroundImageUri.orEmpty()
+        dump["settings_bgTransparency"] = backgroundImageTransparencyPercent.toString()
         dump["settings_bgColor"] = appBackgroundColorOverride?.toArgbCompat()?.toString().orEmpty()
         dump["settings_chromeColor"] = chromeBackgroundColorOverride?.toArgbCompat()?.toString().orEmpty()
         dump["settings_cardColor"] = cardColorOverride?.toArgbCompat()?.toString().orEmpty()
@@ -652,6 +658,7 @@ fun AppRoot(appContext: Context) {
         appTheme = runCatching { AppTheme.valueOf(dump["settings_theme"].orEmpty()) }.getOrDefault(appTheme)
         dump["settings_accent"]?.toIntOrNull()?.let { accent = Color(it) }
         backgroundImageUri = dump["settings_bg"].orEmpty().ifBlank { null }
+        backgroundImageTransparencyPercent = getInt("settings_bgTransparency", backgroundImageTransparencyPercent).coerceIn(0, 100)
         appBackgroundColorOverride = dump["settings_bgColor"]?.toIntOrNull()?.let { Color(it) }
         chromeBackgroundColorOverride = dump["settings_chromeColor"]?.toIntOrNull()?.let { Color(it) }
         cardColorOverride = dump["settings_cardColor"]?.toIntOrNull()?.let { Color(it) }
@@ -710,6 +717,7 @@ fun AppRoot(appContext: Context) {
                 p[Keys.NEON_FLOW_SPEED] = neonFlowSpeed.coerceIn(0, 2)
                 p[Keys.NEON_GLOW_PALETTE] = neonGlowPalette
                 p[Keys.BACKGROUND_IMAGE_URI] = backgroundImageUri.orEmpty()
+                p[Keys.BACKGROUND_IMAGE_TRANSPARENCY_PERCENT] = backgroundImageTransparencyPercent.coerceIn(0, 100)
                 appBackgroundColorOverride?.let { p[Keys.APP_BACKGROUND_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.APP_BACKGROUND_ARGB)
                 chromeBackgroundColorOverride?.let { p[Keys.CHROME_BACKGROUND_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.CHROME_BACKGROUND_ARGB)
                 cardColorOverride?.let { p[Keys.CARD_COLOR_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.CARD_COLOR_ARGB)
@@ -939,6 +947,7 @@ fun AppRoot(appContext: Context) {
                 p[Keys.FONT_STYLE] = fontStyle.name
                 p[Keys.FONT_SCALE_PERCENT] = fontScalePercent.coerceIn(80, 125)
                 p[Keys.BACKGROUND_IMAGE_URI] = backgroundImageUri.orEmpty()
+                p[Keys.BACKGROUND_IMAGE_TRANSPARENCY_PERCENT] = backgroundImageTransparencyPercent.coerceIn(0, 100)
                 appBackgroundColorOverride?.let { p[Keys.APP_BACKGROUND_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.APP_BACKGROUND_ARGB)
                 chromeBackgroundColorOverride?.let { p[Keys.CHROME_BACKGROUND_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.CHROME_BACKGROUND_ARGB)
                 cardColorOverride?.let { p[Keys.CARD_COLOR_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.CARD_COLOR_ARGB)
@@ -1105,6 +1114,7 @@ fun AppRoot(appContext: Context) {
         fontStyle = runCatching { AppFontStyle.valueOf(prefs[Keys.FONT_STYLE] ?: AppFontStyle.DEFAULT.name) }.getOrDefault(AppFontStyle.DEFAULT)
         fontScalePercent = (prefs[Keys.FONT_SCALE_PERCENT] ?: 100).coerceIn(80, 125)
         backgroundImageUri = prefs[Keys.BACKGROUND_IMAGE_URI].orEmpty().ifBlank { null }
+        backgroundImageTransparencyPercent = (prefs[Keys.BACKGROUND_IMAGE_TRANSPARENCY_PERCENT] ?: 78).coerceIn(0, 100)
         textColorOverride = prefs[Keys.TEXT_COLOR_ARGB]?.let { Color(it) }
         appBackgroundColorOverride = prefs[Keys.APP_BACKGROUND_ARGB]?.let { Color(it) }
         chromeBackgroundColorOverride = prefs[Keys.CHROME_BACKGROUND_ARGB]?.let { Color(it) }
@@ -1391,6 +1401,7 @@ fun AppRoot(appContext: Context) {
     val advancedTemplateGson = Gson()
     val advancedDailyImportLimit = 500
     val advancedMainImportLimit = 200
+    val advancedShopImportLimit = 120
     val advancedTemplatePromptText = """
 You are editing a JSON file exported from the Questify app.
 
@@ -1399,12 +1410,13 @@ USER REQUEST:
 
 Goal:
 - Use the USER REQUEST to generate/replace quests in this file.
-- Edit only daily_quests and main_quests.
+- You may edit daily_quests, main_quests, shop_items, app_theme, and accent_argb.
 - Keep schema-compatible JSON for Questify import.
 
 Hard rules:
 1) Return valid JSON only. No markdown. No explanation.
 2) Keep required top-level keys for import: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.
+   - shop_items is optional but supported and recommended when USER REQUEST includes economy/shop.
 3) ai_instructions and guide are optional in final output (you may remove them).
 4) daily_quests rules:
     - category must be one of FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND
@@ -1428,13 +1440,22 @@ Hard rules:
     - optional image_uri is allowed
     - for numbered chains in the same family (example: "Career Upgrade 1/2/3"), xp_reward must be non-decreasing by number
     - prefer clear progression in numbered chains (recommended +8% to +20% or at least +50 XP per step)
-6) App import limits:
+6) shop_items rules:
+   - name must be clear and short
+   - icon should be short emoji
+   - description concise and practical
+   - cost should fit app economy (recommended 20..5000)
+   - stock/max_stock should be 0..99 and max_stock >= stock
+   - avoid overpowered progression skips (focus utility/cosmetic/quality-of-life)
+   - avoid duplicate filler items
+7) App import limits:
    - daily_quests max = $advancedDailyImportLimit total
    - main_quests max = $advancedMainImportLimit total
+   - shop_items max = $advancedShopImportLimit total
    - counts are TOTAL, not per category
    - if USER REQUEST exceeds limits, clamp to these maximums
-7) Do not remove existing valid quests unless needed to satisfy the USER REQUEST.
-8) The existing quests in daily_quests and main_quests are examples only.
+8) Do not remove existing valid quests unless needed to satisfy the USER REQUEST.
+9) The existing quests in daily_quests/main_quests/shop_items are examples only.
     - You may fully replace them to match the USER REQUEST.
     - Prefer replacing example content with the requested content.
 
@@ -1453,7 +1474,7 @@ Final output:
             accent_argb = accent.toArgbCompat().toLong(),
             ai_instructions = listOf(
                 "This JSON file is from Questify.",
-                "Read USER REQUEST first, then update only daily_quests and main_quests.",
+                "Read USER REQUEST first, then update daily_quests/main_quests/shop_items and optionally app_theme/accent_argb.",
                 "Existing quests are sample data only; you can replace or remove them.",
                 "Required keys: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.",
                 "guide and ai_instructions are optional in the final returned file.",
@@ -1470,14 +1491,18 @@ Final output:
                 "Main rules: unique ref values, prerequisite_ref null or existing ref.",
                 "Main quests can include optional icon and optional image_uri.",
                 "For numbered main quest families, keep xp_reward non-decreasing by family number.",
+                "Shop rules: concise name/description, icon emoji, cost fits economy, stock/max_stock in 0..99, avoid duplicate filler.",
+                "Shop caps: shop_items <= $advancedShopImportLimit.",
                 "Output must be JSON only, no markdown, no commentary, no extra chat text.",
                 "If possible, return as downloadable file attachment named questify_advanced_template.json."
             ),
             guide = AdvancedTemplateGuide(
                 summary = "Workflow: user asks AI for quests, AI edits this file directly, user uploads the returned JSON in Settings > Advanced Templates.",
-                ai_prompt_example = advancedTemplatePromptText.replace("{{USER_REQUEST}}", "Generate 100 daily quests and 30 main quests in Saitama-style progression focused on discipline and fitness."),
+                ai_prompt_example = advancedTemplatePromptText.replace("{{USER_REQUEST}}", "Generate 120 daily quests, 40 main quests, and 24 shop items for a disciplined real-life RPG. Set app_theme to DEFAULT and pick a matching accent_argb. Keep main chains progressive and shop prices balanced for this quest economy."),
                 notes = listOf(
                     "Do not remove schema_version, template_name, daily_quests, main_quests.",
+                    "AI may also update app_theme and accent_argb if requested.",
+                    "AI may generate shop_items when requested.",
                     "Current quests are placeholders/examples and can be replaced.",
                     "daily_quests: category must be FITNESS|STUDY|HYDRATION|DISCIPLINE|MIND.",
                     "daily_quests: difficulty 1..5, xp 10..300, target >= 1.",
@@ -1493,6 +1518,7 @@ Final output:
                     "main_quests: prerequisite_ref must point to an existing ref.",
                     "main_quests: optional icon and optional image_uri are supported.",
                     "main_quests: for numbered families, xp_reward should not decrease as the number increases.",
+                    "shop_items: keep economy balanced, realistic costs, and avoid overpowered items.",
                     "Keep text concise and realistic for mobile UI."
                 )
             ),
@@ -1503,6 +1529,10 @@ Final output:
             main_quests = listOf(
                 AdvancedMainQuestEntry(ref = "mq_1", title = "Build Consistency", description = "Finish 30 focused days in a row.", xp_reward = 400, steps = listOf("Week 1", "Week 2", "Week 3", "Week 4"), icon = "🏆"),
                 AdvancedMainQuestEntry(ref = "mq_2", title = "Master Focus", description = "Upgrade your focus routine.", xp_reward = 600, steps = listOf("Baseline", "System", "Mastery"), prerequisite_ref = "mq_1", icon = "🧠")
+            ),
+            shop_items = listOf(
+                AdvancedShopItemEntry(name = "Focus Timer Boost", icon = "⏱️", description = "Adds a quick focus session shortcut.", cost = 180, stock = 5, max_stock = 5, consumable = true),
+                AdvancedShopItemEntry(name = "Calm Theme Pack", icon = "🎨", description = "Unlocks a calm visual preset.", cost = 420, stock = 1, max_stock = 1, consumable = false)
             )
         )
         return advancedTemplateGson.toJson(starter)
@@ -1513,20 +1543,25 @@ Final output:
         val lower = request.lowercase(Locale.getDefault())
         val dailyCount = Regex("""(\d{1,4})\s*(daily|day|dailies)""").find(lower)?.groupValues?.getOrNull(1)?.toIntOrNull()
         val mainCount = Regex("""(\d{1,4})\s*(main|story|boss|milestone)""").find(lower)?.groupValues?.getOrNull(1)?.toIntOrNull()
+        val shopCount = Regex("""(\d{1,4})\s*(shop|item|items|store)""").find(lower)?.groupValues?.getOrNull(1)?.toIntOrNull()
         val finalDailyCount = dailyCount?.coerceAtMost(advancedDailyImportLimit)
         val finalMainCount = mainCount?.coerceAtMost(advancedMainImportLimit)
+        val finalShopCount = shopCount?.coerceAtMost(advancedShopImportLimit)
         val countHint = buildString {
             append("\n- Counts are TOTAL, not per category.")
-            append("\n- Hard cap: daily <= $advancedDailyImportLimit, main <= $advancedMainImportLimit.")
+            append("\n- Hard cap: daily <= $advancedDailyImportLimit, main <= $advancedMainImportLimit, shop_items <= $advancedShopImportLimit.")
             append("\n- If category distribution is not specified, auto-distribute across FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.")
             append("\n- In default distribution, keep category counts near-balanced (difference <= 1).")
             append("\n- If tier distribution is not specified, keep daily tiers 1..5 near-balanced (difference <= 1 when possible).")
             append("\n- If category focus/per-category counts are specified, follow that request within caps.")
             append("\n- For numbered main quest families, keep xp_reward non-decreasing by number.")
+            append("\n- For shop_items, keep economy balanced (cost and stock progression, no overpowered skips).")
             if (finalDailyCount != null) append("\n- Generate exactly $finalDailyCount daily quests.")
             if (finalMainCount != null) append("\n- Generate exactly $finalMainCount main quests.")
+            if (finalShopCount != null) append("\n- Generate exactly $finalShopCount shop items.")
             if (dailyCount != null && finalDailyCount != dailyCount) append("\n- Daily request was capped from $dailyCount to $finalDailyCount.")
             if (mainCount != null && finalMainCount != mainCount) append("\n- Main request was capped from $mainCount to $finalMainCount.")
+            if (shopCount != null && finalShopCount != shopCount) append("\n- Shop request was capped from $shopCount to $finalShopCount.")
             if (isNotBlank()) append("\n- If needed, replace all existing sample quests to match these counts.")
         }
         val enrichedRequest = if (countHint.isBlank()) request else request + "\n\nCOUNT TARGETS:" + countHint
@@ -1626,8 +1661,29 @@ Final output:
             }
         val main = mainBase.map { q -> mainAdjustedById[q.id] ?: q }
         if (mainProgressionAdjusted > 0) warnings += "Adjusted $mainProgressionAdjusted main quests to keep numbered-chain XP non-decreasing."
+        val shop = parsed.shop_items.take(advancedShopImportLimit).mapIndexedNotNull { index, s ->
+            val name = s.name.trim().take(48)
+            if (name.isBlank()) {
+                warnings += "Shop[$index] skipped: missing name."
+                return@mapIndexedNotNull null
+            }
+            val safeIdBase = s.id?.trim().orEmpty().ifBlank { name.lowercase(Locale.getDefault()).replace(Regex("[^a-z0-9]+"), "_").trim('_') }
+            val safeId = safeIdBase.ifBlank { "shop_${index + 1}" }.take(40)
+            ShopItem(
+                id = "${packageId}_$safeId",
+                name = name,
+                icon = s.icon.trim().ifBlank { "🧩" }.take(3),
+                description = s.description.trim().take(140),
+                cost = s.cost.coerceIn(20, 20000),
+                stock = s.stock.coerceIn(0, 99),
+                maxStock = s.max_stock.coerceIn(0, 99).coerceAtLeast(s.stock.coerceIn(0, 99)),
+                isConsumable = s.consumable,
+                imageUri = s.image_uri?.takeIf { it.isNotBlank() }
+            )
+        }.distinctBy { it.id.lowercase(Locale.getDefault()) }
+        if (parsed.shop_items.size > advancedShopImportLimit) warnings += "Shop items capped to $advancedShopImportLimit."
 
-        if (daily.isEmpty() && main.isEmpty()) {
+        if (daily.isEmpty() && main.isEmpty() && shop.isEmpty()) {
             return AdvancedTemplateImportResult(false, templateName, 0, 0, warnings = warnings, errors = listOf("No valid quests found in JSON."))
         }
 
@@ -1637,7 +1693,7 @@ Final output:
             appTheme = theme,
             dailyQuests = customTemplatesToQuestTemplates(daily),
             mainQuests = main,
-            shopItems = emptyList(),
+            shopItems = shop,
             packageId = packageId,
             accentArgb = parsed.accent_argb
         )
@@ -1648,7 +1704,7 @@ Final output:
     fun applyAdvancedImportedTemplate(packageId: String): Boolean {
         val t = savedTemplates.firstOrNull { it.packageId == packageId } ?: return false
         appTheme = normalizeTheme(t.appTheme)
-        accent = t.accentArgb?.let { Color(it) } ?: fallbackAccentForTheme(appTheme)
+        accent = t.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
         applyTemplateSettings(t.templateSettings)
         persistSettings()
         val mappedDailies = t.dailyQuests.map { qt ->
@@ -1676,7 +1732,7 @@ Final output:
 
     fun applyStarterTemplate(template: GameTemplate) {
         appTheme = normalizeTheme(template.appTheme)
-        accent = template.accentArgb?.let { Color(it) } ?: fallbackAccentForTheme(appTheme)
+        accent = template.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
         applyTemplateSettings(template.templateSettings)
         applyTemplateDailyQuestDefaults(template.packageId, clearExisting = true)
         persistSettings()
@@ -2415,6 +2471,7 @@ Final output:
             fontStyle = AppFontStyle.DEFAULT
             fontScalePercent = 100
             backgroundImageUri = null
+            backgroundImageTransparencyPercent = 78
             textColorOverride = null
             appBackgroundColorOverride = null
             chromeBackgroundColorOverride = null
@@ -2425,7 +2482,7 @@ Final output:
             journalName = "Journal"
             val defaultTemplate = getDefaultGameTemplate()
             appTheme = if (systemPrefersDark) AppTheme.DEFAULT else AppTheme.LIGHT
-            accent = defaultTemplate.accentArgb?.let { Color(it) } ?: fallbackAccentForTheme(appTheme)
+            accent = defaultTemplate.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
 
             unlockedAchievementIds = emptySet()
             inventory = emptyList()
@@ -2704,7 +2761,7 @@ Final output:
                         // 2. Apply the Imported Template
                         val t = promptApplyTemplate!!
                         appTheme = normalizeTheme(t.appTheme)
-                        accent = t.accentArgb?.let { Color(it) } ?: fallbackAccentForTheme(appTheme)
+                        accent = t.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
                         applyTemplateSettings(t.templateSettings)
                         persistSettings()
 
@@ -2872,13 +2929,9 @@ Final output:
                 },
                 bottomBar = {
                     if (screen == Screen.HOME || screen == Screen.MAINQUEST || screen == Screen.GRIMOIRE) {
-                        Surface(color = navBarBg, modifier = Modifier.fillMaxWidth()) {
+                        Surface(color = Color.Transparent, modifier = Modifier.fillMaxWidth()) {
                             val navDockShape = RoundedCornerShape(18.dp)
-                            val navDockBg = if (navBarBg.luminance() >= 0.5f) {
-                                Color.Black.copy(alpha = 0.08f)
-                            } else {
-                                Color.Black.copy(alpha = 0.20f)
-                            }
+                            val navDockBg = Color.Transparent
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -2921,10 +2974,16 @@ Final output:
                             Box(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .background(if (isThemeBgLight) Color.White.copy(alpha = 0.70f) else Color.Black.copy(alpha = 0.45f))
+                                    .background(
+                                        if (isThemeBgLight) {
+                                            Color.White.copy(alpha = 0.70f * (1f - (backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f)))
+                                        } else {
+                                            Color.Black.copy(alpha = 0.45f * (1f - (backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f)))
+                                        }
+                                    )
                             )
                         }
-                        Surface(modifier = Modifier.fillMaxSize(), color = if (backgroundImageUri.isNullOrBlank()) themeBg else themeBg.copy(alpha = if (isThemeBgLight) 0.88f else 0.78f)) {
+                        Surface(modifier = Modifier.fillMaxSize(), color = if (backgroundImageUri.isNullOrBlank()) themeBg else themeBg.copy(alpha = 1f - (backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f))) {
                         when (target) {
                             // FIXED: Screen.HOME now passes the bosses list
                             Screen.HOME -> HomeScreen(
@@ -3146,7 +3205,7 @@ Final output:
                                         persistSavedTemplates(savedTemplates + backup)
                                     }
                                     appTheme = normalizeTheme(t.appTheme)
-                                    accent = t.accentArgb?.let { Color(it) } ?: fallbackAccentForTheme(appTheme)
+                                    accent = t.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
                                     applyTemplateSettings(t.templateSettings)
                                     persistSettings()
 
@@ -3255,6 +3314,7 @@ Final output:
                                 fontStyle = fontStyle,
                                 fontScalePercent = fontScalePercent,
                                 appLanguage = appLanguage,
+                                backgroundImageTransparencyPercent = backgroundImageTransparencyPercent,
                                 journalName = journalName,
                                 textColorOverride = textColorOverride,
                                 appBackgroundColorOverride = appBackgroundColorOverride,
@@ -3316,6 +3376,10 @@ Final output:
                                 backgroundImageUri = backgroundImageUri,
                                 onBackgroundImageChanged = {
                                     backgroundImageUri = it
+                                    persistSettings()
+                                },
+                                onBackgroundImageTransparencyPercentChanged = {
+                                    backgroundImageTransparencyPercent = it.coerceIn(0, 100)
                                     persistSettings()
                                 },
                                 onAppBackgroundColorChanged = { appBackgroundColorOverride = it; persistSettings() },
@@ -3467,7 +3531,7 @@ Final output:
                     customMode = true
                 }
                 appTheme = normalizeTheme(setup.theme)
-                accent = setup.accentArgb?.let { Color(it) } ?: fallbackAccentForTheme(appTheme)
+                accent = setup.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
                 persistSettings()
                 scope.launch { appContext.dataStore.edit { p -> p[Keys.ONBOARDING_DONE] = true } }
                 onboardingSkipIntroDefault = false

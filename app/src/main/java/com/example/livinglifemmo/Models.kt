@@ -59,6 +59,7 @@ data class TemplateSettings(
     val fontStyle: AppFontStyle = AppFontStyle.DEFAULT,
     val fontScalePercent: Int = 100,
     val backgroundImageUri: String? = null,
+    val backgroundImageTransparencyPercent: Int? = null,
     val textColorArgb: Long? = null,
     val appBackgroundArgb: Long? = null,
     val chromeBackgroundArgb: Long? = null,
@@ -279,8 +280,8 @@ data class FullBackupPayload(
 )
 
 data class AdvancedTemplateGuide(
-    val summary: String = "Edit daily_quests and main_quests with AI, then import this file in Settings > Advanced Templates.",
-    val ai_prompt_example: String = "Add 100 daily quests focused on fitness and deep work. Keep difficulty 1-5 and realistic XP values.",
+    val summary: String = "Edit daily_quests, main_quests, and optional shop_items with AI, then import this file in Settings > Advanced Templates.",
+    val ai_prompt_example: String = "Add 100 daily quests, 30 main quests, and 20 balanced shop items. Also set app_theme and accent_argb.",
     val notes: List<String> = listOf(
         "Use category: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND",
         "difficulty must be 1..5",
@@ -311,6 +312,18 @@ data class AdvancedMainQuestEntry(
     val image_uri: String? = null
 )
 
+data class AdvancedShopItemEntry(
+    val id: String? = null,
+    val name: String = "",
+    val icon: String = "🧩",
+    val description: String = "",
+    val cost: Int = 100,
+    val stock: Int = 5,
+    val max_stock: Int = 5,
+    val consumable: Boolean = true,
+    val image_uri: String? = null
+)
+
 data class AdvancedTemplateFile(
     val schema_version: Int = 1,
     val template_name: String = "AI Generated Template",
@@ -324,7 +337,8 @@ data class AdvancedTemplateFile(
     ),
     val guide: AdvancedTemplateGuide = AdvancedTemplateGuide(),
     val daily_quests: List<AdvancedDailyQuestEntry> = emptyList(),
-    val main_quests: List<AdvancedMainQuestEntry> = emptyList()
+    val main_quests: List<AdvancedMainQuestEntry> = emptyList(),
+    val shop_items: List<AdvancedShopItemEntry> = emptyList()
 )
 
 data class AdvancedTemplateImportResult(
