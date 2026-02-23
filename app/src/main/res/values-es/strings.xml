@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Questify</string>
+    <string name="widget_quick_complete">Marcar una completada</string>
+
+    <!-- UI Common -->
+    <string name="close">Cerrar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="save">Guardar</string>
+    <string name="delete">Eliminar</string>
+    <string name="edit">Editar</string>
+    <string name="apply">Aplicar</string>
+    <string name="clear">Limpiar</string>
+    <string name="back">Atrás</string>
+    <string name="next">Siguiente</string>
+    <string name="done">LISTO</string>
+    <string name="start">INICIAR</string>
+    <string name="claim">RECLAMAR</string>
+    <string name="add">Añadir</string>
+    <string name="remove">Quitar</string>
+    <string name="ok">OK</string>
+
+    <!-- Navigation labels -->
+    <string name="nav_home">Inicio</string>
+    <string name="nav_dashboard">Panel</string>
+
+    <!-- Screens -->
+    <string name="title_daily_quests">Misiones Diarias</string>
+    <string name="title_main_quests">Misiones Principales</string>
+    <string name="title_journal">Diario</string>
+    <string name="title_stats">Estadísticas</string>
+    <string name="title_calendar">Calendario</string>
+    <string name="title_settings">Ajustes</string>
+    <string name="title_shop">Tienda</string>
+    <string name="title_community">Comunidad</string>
+    <string name="title_quests_templates">Misiones y Plantillas</string>
+    <string name="title_about">Acerca de</string>
+    <string name="title_dashboard">Centro de Mando</string>
+
+    <!-- Home Screen -->
+    <string name="no_quests">No hay misiones.</string>
+    <string name="open_quests_templates">Abrir Misiones y Plantillas</string>
+    <string name="refresh_limit">Refrescar %1$d/3</string>
+    <string name="quest_options">Opciones de Misión</string>
+    <string name="reset_progress">Reiniciar Progreso</string>
+    <string name="set_player_name">Nombre del Jugador</string>
+    <string name="player_name_label">Nombre del jugador</string>
+    <string name="level_label">Nv %1$d</string>
+    <string name="gold_label">ORO</string>
+
+    <!-- Categories -->
+    <string name="cat_fitness">Fitness</string>
+    <string name="cat_study">Estudio</string>
+    <string name="cat_hydration">Hidratación</string>
+    <string name="cat_discipline">Disciplina</string>
+    <string name="cat_mind">Mente</string>
+
+    <!-- Shop -->
+    <string name="shop_catalog">Catálogo de la Tienda</string>
+    <string name="enable_custom_mode_shop">Activa el Modo Personalizado en Ajustes para añadir/editar artículos.</string>
+    <string name="no_shop_items_custom">No hay artículos aún.\nPulsa + para añadir el primero.</string>
+    <string name="no_shop_items">No hay artículos disponibles ahora.</string>
+    <string name="delete_shop_item_title">¿Eliminar artículo?</string>
+    <string name="delete_shop_item_confirm">¿Quitar \'%1$s\' del catálogo?</string>
+    <string name="buy">Comprar</string>
+    <string name="sold_out">Agotado</string>
+    <string name="owned_count">En posesión x%1$d</string>
+    <string name="stock_label">Stock %1$d/%2$d</string>
+
+    <!-- Journal -->
+    <string name="saving">Guardando...</string>
+    <string name="journal_cover">Portada</string>
+    <string name="journal_page_n">Página %1$d</string>
+    <string name="journal_page_of">Página %1$d/365</string>
+    <string name="journal_title_hint">Título del Diario</string>
+    <string name="journal_text_hint">Escribe tus notas...</string>
+    <string name="record_voice">Grabar Voz</string>
+    <string name="stop_voice">Detener Voz</string>
+    <string name="play_latest">Reproducir última</string>
+    <string name="stop_latest">Detener última</string>
+    <string name="rename_journal">Renombrar Diario</string>
+    <string name="rename_voice">Renombrar Voz</string>
+    <string name="remove_voice_title">¿Quitar nota de voz?</string>
+    <string name="remove_voice_desc">Esto eliminará la nota de voz de la página.</string>
+
+    <!-- Stats -->
+    <string name="level">Nivel</string>
+    <string name="attributes">Atributos</string>
+    <string name="last_7_days">Completadas últimos 7 días</string>
+    <string name="strength">Fuerza</string>
+    <string name="intellect">Intelecto</string>
+    <string name="vitality">Vitalidad</string>
+    <string name="endurance">Resistencia</string>
+    <string name="faith">Fe</string>
+
+    <!-- Calendar -->
+    <string name="today">Hoy</string>
+    <string name="plans_for">Planes para %1$s</string>
+    <string name="add_plan">Añadir plan</string>
+    <string name="add_plan_hint">Ej: 30 min ejercicio</string>
+    <string name="save_plan">Guardar Plan</string>
+    <string name="no_plans">No hay planes para esta fecha.</string>
+    <string name="agenda">Agenda</string>
+    <string name="no_saved_plans">No hay planes guardados.</string>
+
+    <!-- Settings -->
+    <string name="tab_gameplay">Juego</string>
+    <string name="tab_appearance">Apariencia</string>
+    <string name="tab_theme_lab">Lab de Temas</string>
+    <string name="tab_alerts">Alertas</string>
+    <string name="tab_cloud">Nube</string>
+    <string name="tab_creator">Creador</string>
+    <string name="tab_safety">Seguridad</string>
+
+    <!-- Achievements -->
+    <string name="ach_unlocked_count">Desbloqueados: %1$d / %2$d</string>
+    <string name="no_achievements_yet">Sin logros todavía</string>
+
+    <!-- Community -->
+    <string name="tab_discover">Descubrir</string>
+    <string name="tab_following">Siguiendo</string>
+    <string name="tab_publish">Publicar</string>
+    <string name="sync_count">Sincronizar %1$d</string>
+    <string name="search_hint">Buscar creadores, títulos, etiquetas</string>
+    <string name="sort_latest">Últimos</string>
+    <string name="sort_popular">Popular</string>
+    <string name="sort_top">Mejor Valorados</string>
+
+    <!-- Quests Screen -->
+    <string name="tab_daily">Diario</string>
+    <string name="tab_main">Principal</string>
+    <string name="tab_template">Plantilla</string>
+</resources>

@@ -1,0 +1,451 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">كويستيفاي (Questify)</string>
+    <string name="widget_quick_complete">تحديد واحدة كمكتملة</string>
+
+    <!-- UI Common -->
+    <string name="close">إغلاق</string>
+    <string name="cancel">إلغاء</string>
+    <string name="save">حفظ</string>
+    <string name="delete">حذف</string>
+    <string name="edit">تعديل</string>
+    <string name="apply">تطبيق</string>
+    <string name="clear">مسح</string>
+    <string name="back">رجوع</string>
+    <string name="next">التالي</string>
+    <string name="done">مكتمل</string>
+    <string name="start">بدء</string>
+    <string name="claim">استلام</string>
+    <string name="add">إضافة</string>
+    <string name="remove">إزالة</string>
+    <string name="ok">موافق</string>
+    <string name="on_label">مفعل</string>
+    <string name="off_label">معطل</string>
+    <string name="undo">تراجع</string>
+
+    <!-- Navigation labels -->
+    <string name="nav_home">الرئيسية</string>
+    <string name="nav_dashboard">لوحة التحكم</string>
+    <string name="nav_menu_desc">فتح قائمة التنقل</string>
+
+    <!-- Screens -->
+    <string name="title_daily_quests">المهام اليومية</string>
+    <string name="title_main_quests">المهام الأساسية</string>
+    <string name="title_journal">السجل</string>
+    <string name="title_stats">الإحصائيات</string>
+    <string name="title_calendar">التقويم</string>
+    <string name="title_settings">الإعدادات</string>
+    <string name="title_shop">المتجر</string>
+    <string name="title_community">المجتمع</string>
+    <string name="title_quests_templates">المهام والقوالب</string>
+    <string name="title_about">حول التطبيق</string>
+    <string name="title_dashboard">مركز القيادة</string>
+
+    <!-- Home Screen -->
+    <string name="no_quests">لا توجد مهام.</string>
+    <string name="open_quests_templates">فتح المهام والقوالب</string>
+    <string name="refresh_limit">تحديث %1$d/3</string>
+    <string name="quest_options">خيارات المهمة</string>
+    <string name="reset_progress">إعادة ضبط التقدم</string>
+    <string name="set_player_name">تحديد اسم اللاعب</string>
+    <string name="player_name_label">اسم اللاعب</string>
+    <string name="level_label">مستوى %1$d</string>
+    <string name="gold_label">ذهب</string>
+    <string name="streak_label">🔥 %1$d</string>
+    <string name="quests_rerolled">تم إعادة تدوير المهام</string>
+    <string name="refresh_limit_reached">تم بلوغ حد التحديث</string>
+    <string name="ready_to_claim_msg">جاهز للاستلام</string>
+    <string name="marked_done_msg">تم التحديد كمكتمل</string>
+    <string name="progress_reset_msg">تم إعادة ضبط التقدم</string>
+    <string name="quest_started_msg">بدأت المهمة</string>
+    <string name="progress_n_m_msg">التقدم %1$d/%2$d</string>
+    <string name="xp_earned_msg">تم كسب +%1$d نقطة خبرة</string>
+    <string name="rest_mode_active_msg">وضع الاستراحة مفعل. قم بتعطيله في الإعدادات لكسب نقاط الخبرة.</string>
+
+    <!-- Categories -->
+    <string name="cat_fitness">اللياقة البدنية</string>
+    <string name="cat_study">الدراسة</string>
+    <string name="cat_hydration">شرب الماء</string>
+    <string name="cat_discipline">الانضباط</string>
+    <string name="cat_mind">العقل والروح</string>
+
+    <!-- Shop -->
+    <string name="shop_catalog">كتالوج المتجر</string>
+    <string name="enable_custom_mode_shop">قم بتمكين الوضع المخصص في الإعدادات لإضافة/تعديل عناصر المتجر.</string>
+    <string name="no_shop_items_custom">لا توجد عناصر في المتجر بعد.\nانقر على + لإضافة عنصرك الأول.</string>
+    <string name="no_shop_items">لا توجد عناصر متوفرة في الوقت الحالي.</string>
+    <string name="delete_shop_item_title">حذف عنصر من المتجر؟</string>
+    <string name="delete_shop_item_confirm">هل تريد إزالة \'%1$s\' من كتالوج المتجر؟</string>
+    <string name="buy">شراء</string>
+    <string name="sold_out">نفذت الكمية</string>
+    <string name="owned_count">تمتلك x%1$d</string>
+    <string name="stock_label">المخزون %1$d/%2$d</string>
+    <string name="purchased_msg">تم شراء %1$s</string>
+    <string name="shop_item_saved">تم حفظ عنصر المتجر</string>
+    <string name="shop_item_removed">تم إزالة عنصر المتجر</string>
+    <string name="not_enough_gold">ذهب غير كافٍ</string>
+    <string name="shop_custom_mode_toast">قم بتمكين الوضع المخصص في الإعدادات لإنشاء أو تعديل عناصر المتجر.</string>
+
+    <!-- Journal -->
+    <string name="saving">جاري الحفظ...</string>
+    <string name="journal_cover">الغلاف</string>
+    <string name="journal_page_n">صفحة %1$d</string>
+    <string name="journal_page_of">صفحة %1$d/365</string>
+    <string name="journal_title_hint">عنوان السجل</string>
+    <string name="journal_text_hint">اكتب ملاحظاتك هنا...</string>
+    <string name="record_voice">تسجيل صوتي</string>
+    <string name="stop_voice">إيقاف التسجيل</string>
+    <string name="play_latest">تشغيل الأحدث</string>
+    <string name="stop_latest">إيقاف الأحدث</string>
+    <string name="rename_journal">إعادة تسمية السجل</string>
+    <string name="rename_voice">إعادة تسمية التسجيل</string>
+    <string name="remove_voice_title">إزالة المرفق الصوتي؟</string>
+    <string name="remove_voice_desc">سيؤدي هذا إلى حذف الملاحظة الصوتية من الصفحة.</string>
+    <string name="journal_tap_hint">انقر لفتح الصفحة الأخيرة</string>
+    <string name="rename_voice_dialog_desc">قم بتعيين اسم مخصص لهذه الملاحظة الصوتية.</string>
+    <string name="voice_name_label">اسم الصوت</string>
+    <string name="journal_name_label">اسم السجل</string>
+
+    <!-- Stats -->
+    <string name="level">المستوى</string>
+    <string name="attributes">السمات</string>
+    <string name="last_7_days">إكمال آخر 7 أيام</string>
+    <string name="strength">القوة</string>
+    <string name="intellect">الذكاء</string>
+    <string name="vitality">الحيوية</string>
+    <string name="endurance">التحمل</string>
+    <string name="faith">الإيمان</string>
+
+    <!-- Calendar -->
+    <string name="today">اليوم</string>
+    <string name="plans_for">خطط ليوم %1$s</string>
+    <string name="add_plan">إضافة خطة</string>
+    <string name="add_plan_hint">مثال: تمرين لمدة 30 دقيقة</string>
+    <string name="save_plan">حفظ الخطة</string>
+    <string name="no_plans">لا توجد خطط لهذا التاريخ بعد.</string>
+    <string name="agenda">جدول الأعمال</string>
+    <string name="no_saved_plans">لا توجد خطط محفوظة بعد.</string>
+    <string name="plan_added">تم إضافة الخطة</string>
+    <string name="plan_removed">تم إزالة الخطة</string>
+
+    <!-- Settings -->
+    <string name="tab_gameplay">اللعب</string>
+    <string name="tab_appearance">المظهر</string>
+    <string name="tab_theme_lab">مختبر السمات</string>
+    <string name="tab_alerts">التنبيهات</string>
+    <string name="tab_cloud">السحابة</string>
+    <string name="tab_creator">المطور</string>
+    <string name="tab_safety">الأمان</string>
+
+    <!-- Settings Details -->
+    <string name="settings_daily_cycle">الدورة اليومية</string>
+    <string name="settings_daily_cycle_hint">كيف يبدأ كل يوم وعدد المهام التي يتم إنشاؤها.</string>
+    <string name="settings_auto_new_day">يوم جديد تلقائي</string>
+    <string name="settings_reset_hour">ساعة إعادة الضبط اليومية</string>
+    <string name="settings_quest_slots">فتحات المهام اليومية</string>
+    <string name="settings_quest_flow">سير المهمة</string>
+    <string name="settings_quest_flow_hint">كيف يتصرف تقدم المهمة وحالات الإكمال.</string>
+    <string name="settings_confirm_uncheck">تأكيد إلغاء التحديد</string>
+    <string name="settings_reroll_incomplete">إعادة تدوير غير المكتملة فقط</string>
+    <string name="settings_always_show_progress">إظهار تقدم المهمة دائماً</string>
+    <string name="settings_hide_completed">إخفاء المهام المكتملة</string>
+    <string name="settings_play_modes">أوضاع اللعب</string>
+    <string name="settings_play_modes_hint">تبديلات على مستوى الجلسة تغير ما يمكنك تعديله.</string>
+    <string name="settings_rest_mode">نار المخيم (وضع الاستراحة)</string>
+    <string name="settings_custom_mode">الوضع المخصص</string>
+    <string name="settings_theme">السمة</string>
+    <string name="settings_theme_hint">اسحب عبر الإعدادات المسبقة. يتم تحديث السمة واللون المميز معاً.</string>
+    <string name="settings_preview">معاينة</string>
+    <string name="settings_theme_presets">قوالب السمات</string>
+    <string name="settings_accent">اللون المميز</string>
+    <string name="settings_accent_color">اللون المميز</string>
+    <string name="settings_theme_default">السمة الافتراضية</string>
+    <string name="settings_pick">اختر</string>
+    <string name="settings_advanced_coloring_locked">التلوين المتقدم نشط. لوحة الألوان المميزة مغلقة.</string>
+    <string name="settings_language">اللغة</string>
+    <string name="settings_language_hint">سيعاد تشغيل التطبيق لتطبيق اللغة المختارة.</string>
+    <string name="settings_typography">الخطوط</string>
+    <string name="settings_typography_hint">عائلة الخط وحجمه المستخدم عبر جميع الشاشات.</string>
+    <string name="settings_font_size">حجم الخط</string>
+    <string name="settings_accessibility">إمكانية الوصول والتخطيط</string>
+    <string name="settings_accessibility_hint">عناصر التحكم في سهولة القراءة وراحة اللمس.</string>
+    <string name="settings_high_contrast">نص عالي التباين</string>
+    <string name="settings_compact_mode">الوضع المضغوط</string>
+    <string name="settings_larger_touch">أهداف لمس أكبر</string>
+    <string name="settings_motion">الحركة والمؤثرات</string>
+    <string name="settings_motion_hint">سلوك الرسوم المتحركة وحدود النيون المتحركة.</string>
+    <string name="settings_reduce_animations">تقليل الرسوم المتحركة</string>
+    <string name="settings_neon_borders">حدود نيون</string>
+    <string name="settings_neon_boost">تعزيز ضوء النيون</string>
+    <string name="settings_neon_speed">سرعة تدفق النيون</string>
+    <string name="settings_neon_palette">لوحة توهج النيون</string>
+    <string name="settings_personalization">التخصيص</string>
+    <string name="settings_personalization_hint">صورة مخصصة اختيارية خلف جميع الشاشات ومشاركتها في القوالب.</string>
+    <string name="settings_no_bg">لا توجد خلفية مخصصة</string>
+    <string name="settings_bg_set">تم تعيين الخلفية</string>
+    <string name="settings_tap_to_pick">انقر على البلاطة لاختيار صورة</string>
+    <string name="settings_tap_to_replace">انقر على البلاطة لاستبدال الصورة</string>
+    <string name="settings_theme_library">مكتبة السمات</string>
+    <string name="settings_reset_auto">إعادة ضبط الكل إلى تلقائي</string>
+    <string name="settings_live_preview">معاينة مباشرة</string>
+    <string name="settings_live_preview_hint">معاينة مصغرة للشاشة الرئيسية والسجل باستخدام الألوان المتقدمة الحالية.</string>
+    <string name="settings_typography_colors">ألوان الخطوط</string>
+    <string name="settings_surface_colors">ألوان الأسطح</string>
+    <string name="settings_journal_colors">ألوان السجل</string>
+    <string name="settings_action_colors">ألوان الإجراءات</string>
+    <string name="settings_cloud_hint">نسخ احتياطي واستعادة من Google Drive.</string>
+    <string name="settings_cloud_auto">مزامنة تلقائية مع Google Drive</string>
+    <string name="settings_cloud_not_connected">حساب Google: غير متصل</string>
+    <string name="settings_cloud_account">حساب Google: %1$s</string>
+    <string name="settings_cloud_last_sync">آخر مزامنة: %1$s</string>
+    <string name="settings_cloud_never_sync">آخر مزامنة: أبداً</string>
+    <string name="settings_cloud_connect">ربط Google Drive</string>
+    <string name="settings_cloud_disconnect">قطع اتصال Drive</string>
+    <string name="settings_sync_now">مزامنة الآن</string>
+    <string name="settings_restore">استعادة</string>
+    <string name="settings_creator_account">حساب المطور</string>
+    <string name="settings_creator_hint">عناصر تحكم المطور المميزة وأدوات التحرير المتقدمة.</string>
+    <string name="settings_creator_pass">بطاقة المطور (بيتا)</string>
+    <string name="settings_advanced_options">خيارات متقدمة</string>
+    <string name="settings_dev_tools">أدوات المطور</string>
+    <string name="settings_dev_hint">النسخ الاحتياطي والاستعادة وتصدير سجلات التصحيح.</string>
+    <string name="settings_support">الدعم</string>
+    <string name="settings_support_hint">إرسال ملاحظات للمطور وطلبات التحسين.</string>
+    <string name="settings_safety_hint">تطلب تأكيداً قبل الإجراءات المدمرة.</string>
+    <string name="settings_maintenance">الصيانة</string>
+    <string name="settings_maintenance_hint">استخدم هذا عندما تحتاج دورة اليوم إلى إعادة ضبط يدوية.</string>
+    <string name="settings_danger_zone">منطقة الخطر</string>
+    <string name="settings_danger_hint">يحذف التقدم المحلي والمهام والقوالب والإعدادات.</string>
+    <string name="settings_export_backup">تصدير نسخة احتياطية</string>
+    <string name="settings_import_backup">استيراد نسخة احتياطية</string>
+    <string name="settings_send_feedback">إرسال ملاحظات</string>
+    <string name="settings_export_logs">تصدير السجلات</string>
+    <string name="settings_start_new_day">بدء يوم جديد</string>
+    <string name="settings_reset_all">إعادة ضبط جميع البيانات</string>
+
+    <!-- Settings – extra strings -->
+    <string name="settings_safety">الأمان</string>
+    <string name="settings_confirm_destructive">تأكيد الإجراءات المدمرة</string>
+    <string name="settings_daily_reminders">التذكيرات اليومية</string>
+    <string name="settings_haptics">الاهتزاز</string>
+    <string name="settings_sound_effects">المؤثرات الصوتية</string>
+    <string name="settings_alerts_hint">التنبيهات وردود فعل التفاعل.</string>
+    <string name="settings_yes_switch">نعم، تبديل</string>
+    <string name="settings_switch_theme_title">التبديل إلى سمة %1$s؟</string>
+    <string name="settings_switch_theme_advanced">التلوين المتقدم نشط حالياً. سيؤدي تبديل السمة إلى إعادة ضبط تجاوزات الألوان المتقدمة إلى تلقائي لكي تُطبَّق السمة المختارة بشكل نظيف.</string>
+    <string name="settings_switch_theme_basic">سيؤدي هذا إلى تغيير المظهر الأساسي في التطبيق. هل تريد المتابعة؟</string>
+    <string name="settings_theme_lib_hint">اختر قالباً، وانظر الألوان، ثم انقر تطبيق.</string>
+    <string name="settings_advanced_color_hint">تتجاوز الألوان اليدوية لوحة القالب. استخدم تلقائي للعودة بكل مجموعة إلى سلوك السمة.</string>
+    <string name="settings_preset_examples">أمثلة مسبقة</string>
+    <string name="settings_preset_examples_hint">استخدم زر المكتبة لفتح قائمة قابلة للتمرير (Cyberpunk وDark Souls والمزيد).</string>
+    <string name="settings_typography_colors_hint">يؤثر على العناوين والنصوص والتسميات عبر الشاشات.</string>
+    <string name="settings_surface_colors_hint">يؤثر على خلفية التطبيق وأسطح الأدراج والبطاقات.</string>
+    <string name="settings_journal_colors_hint">يؤثر على صفحات السجل والإشارات المرجعية وألوان الإجراءات.</string>
+    <string name="settings_action_colors_hint">يؤثر على أزرار الملء وإبرازات الإجراءات وحالات التأكيد.</string>
+    <string name="settings_open_theme_lib">فتح مكتبة السمات</string>
+    <string name="settings_neon_tip">نصيحة: اختر لوحة ألوان، ثم اضبط سرعة التدفق.</string>
+    <string name="settings_neon_boost_tip">يزيد تعزيز النيون من سطوع التوهج والتباين.</string>
+    <string name="settings_neon_anim_note">تتوقف حدود النيون المتحركة عند تفعيل تقليل الرسوم المتحركة.</string>
+    <string name="settings_neon_speed_hint">السرعة المنخفضة أكثر سلاسة وأريح للعين.</string>
+    <string name="settings_speed_label">السرعة</string>
+    <string name="settings_speed_slow">بطيء</string>
+    <string name="settings_speed_fast">سريع</string>
+    <string name="settings_speed_smooth">سلس</string>
+    <string name="settings_neon_palette_label">اللوحة</string>
+    <string name="settings_neon_palette_hint">اختر لون توهج النيون الثانوي.</string>
+    <string name="settings_color_theme_accent">لون السمة المميز</string>
+    <string name="settings_color_primary_text">النص الأساسي</string>
+    <string name="settings_color_app_bg">خلفية التطبيق</string>
+    <string name="settings_color_drawer_nav">الأدراج + التنقل الرئيسي</string>
+    <string name="settings_color_cards">البطاقات + أسطح المهام</string>
+    <string name="settings_color_journal_page">خلفية صفحة السجل</string>
+    <string name="settings_color_journal_accents">ألوان السجل المميزة</string>
+    <string name="settings_color_buttons">الأزرار + الإبرازات</string>
+    <string name="settings_advanced_coloring_locked_full">التلوين المتقدم نشط. لوحة الألوان المميزة مغلقة. سيطلب تبديل السمة التأكيد وإعادة ضبط الألوان المتقدمة.</string>
+
+    <!-- Achievements -->
+    <string name="ach_unlocked_count">تم فتح: %1$d / %2$d</string>
+    <string name="no_achievements_yet">لا توجد إنجازات بعد</string>
+    <string name="new_achievement_unlocked">تم فتح إنجاز جديد!</string>
+
+    <!-- Community -->
+    <string name="tab_discover">اكتشف</string>
+    <string name="tab_following">متابعة</string>
+    <string name="tab_publish">نشر</string>
+    <string name="sync_count">مزامنة %1$d</string>
+    <string name="search_hint">ابحث عن المبدعين، العناوين، الأوسمة</string>
+    <string name="sort_latest">الأحدث</string>
+    <string name="sort_popular">شائع</string>
+    <string name="sort_top">الأعلى تقييماً</string>
+    <string name="comm_create">إنشاء</string>
+    <string name="comm_published">تم نشره</string>
+    <string name="comm_user_id">معرف المستخدم</string>
+    <string name="comm_display_name">اسم العرض</string>
+    <string name="comm_save_name">حفظ الاسم</string>
+    <string name="comm_challenge_title">عنوان التحدي</string>
+    <string name="comm_description">الوصف</string>
+    <string name="comm_tags_hint">الأوسمة (مفصولة بفاصلة)</string>
+    <string name="comm_publish_btn">نشر البناء الحالي</string>
+    <string name="comm_publish_hint">يستخدم النشر المهام والقوالب الحالية + المهام الأساسية + المتجر + السمة.</string>
+    <string name="comm_no_published">لم تقم بنشر قوالب بعد.</string>
+    <string name="comm_no_challenges">لا توجد تحديات مجتمعية بعد.</string>
+    <string name="comm_follow_creators_hint">تابع المبدعين لبناء خلاصتك.</string>
+    <string name="comm_add_template">إضافة قالب</string>
+    <string name="comm_following">متابع</string>
+    <string name="comm_follow">متابعة</string>
+    <string name="comm_unmute">إلغاء كتم المطور</string>
+    <string name="comm_mute">كتم المطور</string>
+    <string name="comm_unblock">إلغاء حظر المطور</string>
+    <string name="comm_block">حظر المطور</string>
+    <string name="comm_report">الإبلاغ عن المطور</string>
+    <string name="comm_rating_saved">تم حفظ التقييم.</string>
+    <string name="comm_template_saved">تم حفظ القالب في المكتبة.</string>
+    <string name="comm_template_applied">تم حفظ القالب وتطبيقه.</string>
+    <string name="comm_swipe_hint">اسحب يساراً/يميناً للتبديل بين اكتشف، متابعة، ونشر.</string>
+
+    <!-- Quests Screen -->
+    <string name="tab_daily">يومي</string>
+    <string name="tab_main">أساسي</string>
+    <string name="tab_template">قالب</string>
+    <string name="quest_pool_no_dailies">لا توجد مهام يومية.</string>
+    <string name="quest_pool_no_mains">لا توجد مهام أساسية.</string>
+    <string name="community_templates">قوالب المجتمع</string>
+    <string name="save_template_lib">حفظ في قالب</string>
+    <string name="equip_template_title">تجهيز القالب؟</string>
+    <string name="equip_template_desc">هل أنت متأكد؟ سيؤدي هذا إلى تطبيق السمة والخلفية والخيارات المتقدمة والمهام من هذا القالب.</string>
+    <string name="clear_existing_quests">مسح مهامي الحالية أولاً</string>
+    <string name="backup_current_setup">نسخ الإعداد الحالي احتياطياً إلى قالب</string>
+    <string name="backup_name_label">اسم النسخة الاحتياطية</string>
+    <string name="equip_btn">تجهيز</string>
+    <string name="share_template">مشاركة القالب</string>
+    <string name="template_name_label">اسم القالب</string>
+    <string name="export_btn">تصدير</string>
+    <string name="new_daily_quest">مهمة يومية جديدة</string>
+    <string name="edit_daily_quest">تعديل المهمة اليومية</string>
+    <string name="quest_name_label">اسم المهمة</string>
+    <string name="icon_image_label">الأيقونة / الصورة</string>
+    <string name="icon_fallback_label">الأيقونة الاحتياطية</string>
+    <string name="image_selected">تم اختيار الصورة</string>
+    <string name="category_label">الفئة</string>
+    <string name="target_count_label">العدد المستهدف: %1$d</string>
+    <string name="standard_quest">مهمة قياسية</string>
+    <string name="counter_quest">مهمة عداد (مثلاً 8 أكواب)</string>
+    <string name="critical_daily">مهمة يومية حرجة (تظهر دائماً)</string>
+    <string name="difficulty_tier">فئة الصعوبة</string>
+    <string name="xp_reward_label">مكافأة الخبرة</string>
+    <string name="tier_n">فئة %1$d</string>
+    <string name="xp_n">%1$d نقطة خبرة</string>
+    <string name="new_main_quest">مهمة أساسية جديدة</string>
+    <string name="prerequisite_label">المتطلب السابق (مغلق حتى الإكمال):</string>
+    <string name="quest_steps_label">خطوات المهمة:</string>
+    <string name="add_step_btn">+ إضافة خطوة</string>
+    <string name="quests_admin_hint">قم بتمكين الوضع المخصص في الإعدادات لإضافة/تعديل/حذف المهام المخصصة.</string>
+
+    <!-- UI Additional -->
+    <string name="choose_avatar">اختر صورتك الرمزية</string>
+    <string name="pick_image">اختر صورة</string>
+    <string name="no_active_main_quests">لا توجد مهام أساسية نشطة.\nانتقل إلى المهام والقوالب لإضافة واحدة.</string>
+    <string name="open_custom_main_quests">فتح المهام الأساسية المخصصة</string>
+    <string name="locked_prereq">مغلق: أكمل \'%1$s\'</string>
+    <string name="locked_prereq_generic">مغلق: أكمل المهمة السابقة</string>
+    <string name="completed">مكتمل</string>
+    <string name="ready_to_claim">جاهز للاستلام!</string>
+    <string name="tap_to_start">انقر للبدء</string>
+    <string name="step_n_of_m">خطوة %1$d/%2$d</string>
+    <string name="start_quest_btn">بدء المهمة</string>
+    <string name="finish_quest_btn">إنهاء المهمة</string>
+    <string name="complete_step_btn">إكمال الخطوة</string>
+    <string name="tap_to_reset_progress">انقر لإعادة ضبط التقدم</string>
+    <string name="npc_dialog_intro">تحياتي أيها البطل. طريق جديد يكشف عن نفسه.\n\n%1$s\n\nالمكافأة هي %2$d نقطة خبرة.\nهل تقبل هذا التحدي؟</string>
+    <string name="npc_dialog_triumphant">لقد عدت منتصراً! لقد تم العمل، وأسطورتك تنمو.\n\nخذ هذه المكافأة أيها البطل. لقد استحققتها.</string>
+    <string name="npc_accept_btn">أنا أقبل</string>
+    <string name="npc_claim_reward_btn">استلام المكافأة</string>
+    <string name="deep_focus_title">تركيز عميق</string>
+    <string name="deep_focus_min_n">%1$d دقيقة</string>
+    <string name="deep_focus_break_mode">وضع الاستراحة: استعد نشاطك، ثم واصل.</string>
+    <string name="deep_focus_earn_xp_hint">اكسب 1 نقطة خبرة لكل دقيقة + مكافآت الدورة.</string>
+    <string name="deep_focus_stats">الدورات: %1$d • المقاطعات: %2$d</string>
+    <string name="deep_focus_current_reward">المكافأة الحالية: +%1$d نقطة خبرة</string>
+    <string name="deep_focus_stop_claim">إيقاف واستلام</string>
+    <string name="deep_focus_resume_break">استئناف الاستراحة</string>
+    <string name="deep_focus_start_focus">بدء التركيز</string>
+    <string name="shop_create_item_title">إنشاء عنصر في المتجر</string>
+    <string name="shop_edit_item_title">تعديل عنصر في المتجر</string>
+    <string name="shop_name_label">الاسم</string>
+    <string name="shop_icon_label">الأيقونة</string>
+    <string name="shop_description_label">الوصف</string>
+    <string name="shop_cost_gold">التكلفة (ذهب)</string>
+    <string name="shop_stock_label">المخزون</string>
+    <string name="shop_max_label">الحد الأقصى</string>
+    <string name="shop_consumable_item">عنصر قابل للاستهلاك</string>
+    <string name="dashboard_hero_level">بطل من المستوى %1$d</string>
+    <string name="dashboard_gold_streak">%1$d ذهب • سلسلة نجاح لـ %2$d أيام</string>
+    <string name="dashboard_lifetime_stats">إحصائيات مدى الحياة</string>
+    <string name="dashboard_total_quests">إجمالي المهام</string>
+    <string name="dashboard_days_active">أيام النشاط</string>
+    <string name="dashboard_completion">نسبة الإكمال</string>
+    <string name="dashboard_perfect_days">أيام مثالية</string>
+    <string name="dashboard_7_day_avg">متوسط 7 أيام</string>
+    <string name="dashboard_30_day_avg">متوسط 30 يوم</string>
+    <string name="dashboard_perfect_streak">أطول سلسلة أيام مثالية</string>
+    <string name="dashboard_achievements">الإنجازات</string>
+    <string name="dashboard_best_day">أفضل يوم</string>
+    <string name="dashboard_trend">الاتجاه</string>
+    <string name="dashboard_up">تصاعدي</string>
+    <string name="dashboard_down">تنازلي</string>
+    <string name="dashboard_7_day_trend">اتجاه آخر 7 أيام</string>
+    <string name="dashboard_no_trend_data">لا توجد بيانات اتجاه بعد.</string>
+    <string name="dashboard_30_day_heatmap">خريطة حرارية لـ 30 يوماً</string>
+    <string name="dashboard_achievements_caps">الإنجازات</string>
+    <string name="dashboard_unlocked_stats">تم فتح: %1$d / %2$d</string>
+    <string name="dashboard_recent_history">السجل الأخير</string>
+    <string name="dashboard_no_recent_history">لا يوجد سجل أخير بعد.</string>
+    <string name="dashboard_attribute_matrix">مصفوفة السمات</string>
+    <string name="history_quests_count">%1$d/%2$d مهام</string>
+    <string name="history_completed">مكتمل</string>
+    <string name="history_missed">فائت</string>
+    <string name="quest_card_xp">%1$d نقطة خبرة</string>
+    <string name="quest_card_progress">%1$d/%2$d</string>
+    <string name="character_customize_hero">تخصيص البطل</string>
+    <string name="character_save_look">حفظ المظهر</string>
+    <string name="character_skin">البشرة</string>
+    <string name="character_shirt">القميص</string>
+    <string name="character_pants">البنطال</string>
+    <string name="character_shoes">الحذاء</string>
+
+    <!-- Welcome / Onboarding -->
+    <string name="welcome_to_questify">مرحباً بك في كويستيفاي</string>
+    <string name="character_setup">إعداد الشخصية</string>
+    <string name="step_n_of_m_label">الخطوة %1$d من %2$d</string>
+    <string name="pick_starting_theme">اختر سمة البداية</string>
+    <string name="change_later_settings">يمكنك تغيير كل شيء لاحقاً في الإعدادات.</string>
+    <string name="your_name">اسمك</string>
+    <string name="call_me_hint">كيف يناديك كويستيفاي؟</string>
+    <string name="your_character">شخصيتك</string>
+    <string name="pick_preset_hint">اختر قالباً جاهزاً أو استخدم صورتك الخاصة.</string>
+    <string name="use_custom_image">استخدام صورة مخصصة</string>
+    <string name="starter_template">قالب البداية</string>
+    <string name="choose_story_style">اختر نمط قصتك الافتتاحية.</string>
+    <string name="default_label">افتراضي</string>
+    <string name="balanced_progression">تقدم يومي متوازن</string>
+    <string name="limit_breaker_label">كاسر الحدود</string>
+    <string name="hard_mode_anime">طحن أنمي بصعوبة عالية</string>
+    <string name="real_world_momentum">العالم الواقعي</string>
+    <string name="real_world_momentum_desc">500 مهمة يومية واقعية + 10 فصول حياة تدريجية</string>
+    <string name="empty_label">فارغ</string>
+    <string name="start_no_quests">ابدأ بدون مهام وابنِ مهامك الخاصة</string>
+    <string name="playstyle_label">نمط اللعب</string>
+    <string name="set_direction_reminder">حدد اتجاهك والتذكير.</string>
+    <string name="goal_label">الهدف</string>
+    <string name="difficulty_label">الصعوبة</string>
+    <string name="daily_reminder_hour">ساعة التذكير اليومية</string>
+    <string name="start_journey_btn">ابدأ الرحلة</string>
+    <string name="setup_select_language">اختر اللغة</string>
+    <string name="setup_language_hint">اختر لغتك المفضلة للمتابعة.</string>
+    <string name="preview_label">معاينة</string>
+    <string name="theme_presets_label">نماذج السمات</string>
+
+    <!-- Notifications -->
+    <string name="notif_daily_title">حان وقت مهامك اليومية!</string>
+    <string name="notif_daily_text">لا تنسَ التحقق واستلام مكافآتك.</string>
+</resources>
