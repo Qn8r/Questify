@@ -124,6 +124,55 @@ fun AppRoot(appContext: Context) {
     fun hasSuspiciousCommunityContent(raw: String): Boolean {
         return CommunityCoordinator.hasSuspiciousContent(raw)
     }
+    fun evaluateTemplateTrust(raw: GameTemplate): Pair<GameTemplate, TemplateTrustLevel> {
+        val normalized = normalizeGameTemplateSafe(raw)
+        val suspiciousInRaw =
+            hasSuspiciousCommunityContent(normalized.templateName) ||
+                normalized.dailyQuests.any { hasSuspiciousCommunityContent(it.title) } ||
+                normalized.mainQuests.any {
+                    hasSuspiciousCommunityContent(it.title) ||
+                        hasSuspiciousCommunityContent(it.description) ||
+                        it.steps.any(::hasSuspiciousCommunityContent)
+                } ||
+                normalized.shopItems.any {
+                    hasSuspiciousCommunityContent(it.name) ||
+                        hasSuspiciousCommunityContent(it.description)
+                }
+        val safeName = sanitizeCommunityText(normalized.templateName, 60).ifBlank { "Community Template" }
+        val safeDaily = normalized.dailyQuests
+            .take(500)
+            .map { it.copy(title = sanitizeCommunityText(it.title, 64), icon = it.icon.take(4)) }
+            .filter { it.title.isNotBlank() && !hasSuspiciousCommunityContent(it.title) }
+        val safeMain = normalized.mainQuests
+            .take(200)
+            .map { q ->
+                q.copy(
+                    title = sanitizeCommunityText(q.title, 64),
+                    description = sanitizeCommunityText(q.description, 220),
+                    steps = q.steps.map { sanitizeCommunityText(it, 64) }.filter { it.isNotBlank() }.take(8)
+                )
+            }
+            .filter { it.title.isNotBlank() && !hasSuspiciousCommunityContent(it.title) && !hasSuspiciousCommunityContent(it.description) }
+        val safeShop = normalized.shopItems
+            .take(120)
+            .map { it.copy(name = sanitizeCommunityText(it.name, 48), description = sanitizeCommunityText(it.description, 160)) }
+            .filter { it.name.isNotBlank() && !hasSuspiciousCommunityContent(it.name) && !hasSuspiciousCommunityContent(it.description) }
+        val sanitized = normalized.copy(
+            templateName = safeName,
+            dailyQuests = safeDaily,
+            mainQuests = safeMain,
+            shopItems = safeShop
+        )
+        val trust = when {
+            suspiciousInRaw -> TemplateTrustLevel.FLAGGED
+            sanitized != normalized -> TemplateTrustLevel.SANITIZED
+            else -> TemplateTrustLevel.VERIFIED_SAFE
+        }
+        return sanitized to trust
+    }
+    fun sanitizeTemplateForCommunity(raw: GameTemplate): GameTemplate {
+        return evaluateTemplateTrust(raw).first
+    }
     fun secureCommunityUserId(raw: String): String {
         val candidate = raw.trim()
         val parsed = runCatching { UUID.fromString(candidate) }.getOrNull()
@@ -549,7 +598,26 @@ fun AppRoot(appContext: Context) {
     suspend fun syncCommunityFromRemote() {
         if (!SupabaseApi.isConfigured || communityUserId.isBlank()) return
         flushCommunitySyncQueue()
-        val remotePosts = SupabaseApi.fetchPosts().filterNot { blockedAuthorIds.contains(it.authorId) || mutedAuthorIds.contains(it.authorId) }
+        val remotePosts = SupabaseApi.fetchPosts()
+            .filterNot { blockedAuthorIds.contains(it.authorId) || mutedAuthorIds.contains(it.authorId) }
+            .map { post ->
+                val metadataSuspicious =
+                    hasSuspiciousCommunityContent(post.title) ||
+                        hasSuspiciousCommunityContent(post.description) ||
+                        post.tags.any { tag -> hasSuspiciousCommunityContent(tag) }
+                val (safeTemplate, templateTrust) = evaluateTemplateTrust(post.template)
+                val finalTrust = when {
+                    metadataSuspicious -> TemplateTrustLevel.FLAGGED
+                    else -> templateTrust
+                }
+                post.copy(
+                    title = sanitizeCommunityText(post.title, 60),
+                    description = sanitizeCommunityText(post.description, 280),
+                    tags = sanitizeTags(post.tags),
+                    template = safeTemplate,
+                    templateTrust = finalTrust
+                )
+            }
         if (remotePosts.isNotEmpty() || communityPosts.isEmpty()) persistCommunityPosts(remotePosts)
 
         val remoteFollows = SupabaseApi.fetchFollows(communityUserId)
@@ -1375,11 +1443,12 @@ fun AppRoot(appContext: Context) {
     }
 
     fun cloneTemplateForLibrary(template: GameTemplate, newName: String): GameTemplate {
+        val safeTemplate = sanitizeTemplateForCommunity(template)
         val newPkg = "community_${UUID.randomUUID()}"
-        val remappedDaily = template.dailyQuests.map { it.copy(packageId = newPkg) }
+        val remappedDaily = safeTemplate.dailyQuests.map { it.copy(packageId = newPkg) }
 
-        val idMap = template.mainQuests.associate { it.id to UUID.randomUUID().toString() }
-        val remappedMain = template.mainQuests.map { q ->
+        val idMap = safeTemplate.mainQuests.associate { it.id to UUID.randomUUID().toString() }
+        val remappedMain = safeTemplate.mainQuests.map { q ->
             q.copy(
                 id = idMap[q.id] ?: UUID.randomUUID().toString(),
                 prerequisiteId = q.prerequisiteId?.let { idMap[it] },
@@ -1389,13 +1458,13 @@ fun AppRoot(appContext: Context) {
 
         return GameTemplate(
             templateName = newName,
-            appTheme = template.appTheme,
+            appTheme = safeTemplate.appTheme,
             dailyQuests = remappedDaily,
             mainQuests = remappedMain,
-            shopItems = template.shopItems,
+            shopItems = safeTemplate.shopItems,
             packageId = newPkg,
-            templateSettings = template.templateSettings,
-            accentArgb = template.accentArgb
+            templateSettings = safeTemplate.templateSettings,
+            accentArgb = safeTemplate.accentArgb
         )
     }
     val advancedTemplateGson = Gson()
@@ -1573,8 +1642,21 @@ Final output:
         if (payload.isBlank()) return AdvancedTemplateImportResult(false, "Unnamed", 0, 0, errors = listOf("File is empty."))
         val parsed = runCatching { advancedTemplateGson.fromJson(payload, AdvancedTemplateFile::class.java) }.getOrNull()
             ?: return AdvancedTemplateImportResult(false, "Unnamed", 0, 0, errors = listOf("Invalid JSON format."))
+        val supportedSchema = 1
+        if (parsed.schema_version > supportedSchema) {
+            return AdvancedTemplateImportResult(
+                success = false,
+                templateName = parsed.template_name.ifBlank { "Unnamed" },
+                dailyAdded = 0,
+                mainAdded = 0,
+                errors = listOf("Unsupported schema_version=${parsed.schema_version}. Supported up to $supportedSchema.")
+            )
+        }
 
         val warnings = mutableListOf<String>()
+        if (parsed.schema_version < supportedSchema) {
+            warnings += "Legacy schema_version=${parsed.schema_version} detected. Applied compatibility migration."
+        }
         val templateName = parsed.template_name.trim().ifBlank { "AI Template ${System.currentTimeMillis()}" }.take(60)
         val packageId = "ai_${UUID.randomUUID()}"
 
@@ -1814,14 +1896,20 @@ Final output:
             templateSettings = currentTemplateSettings(),
             accentArgb = accent.toArgbCompat().toLong()
         )
-        val postTemplate = cloneTemplateForLibrary(baseTemplate, cleanTitle)
+        val (safeBaseTemplate, baseTrust) = evaluateTemplateTrust(baseTemplate)
+        val postTemplate = cloneTemplateForLibrary(safeBaseTemplate, cleanTitle)
+        if (postTemplate.dailyQuests.isEmpty() && postTemplate.mainQuests.isEmpty() && postTemplate.shopItems.isEmpty()) {
+            scope.launch { snackbarHostState.showSnackbar("Nothing safe to publish in this template.") }
+            return
+        }
         val post = CommunityPost(
             authorId = communityUserId,
             authorName = communityUserName,
             title = cleanTitle,
             description = cleanDescription,
             tags = tags,
-            template = postTemplate
+            template = postTemplate,
+            templateTrust = baseTrust
         )
         persistCommunityPosts((listOf(post) + communityPosts).distinctBy { it.id })
         AppLog.event("publish", "title=${cleanTitle.take(24)}")
@@ -2168,6 +2256,10 @@ Final output:
     }
 
     fun onBuyShopItem(item: ShopItem) {
+        if (item.cost <= 0) {
+            scope.launch { snackbarHostState.showSnackbar("Invalid item price") }
+            return
+        }
         if (item.stock <= 0) {
             scope.launch { snackbarHostState.showSnackbar("${item.name} is out of stock") }
             return
@@ -2720,9 +2812,25 @@ Final output:
                 containerColor = CardDarkBlue,
                 title = { Text("Equip Template?", color = accentStrong, fontWeight = FontWeight.Bold) },
                 text = {
+                    val t = promptApplyTemplate!!
+                    val dailyDelta = t.dailyQuests.size - customTemplates.size
+                    val mainDelta = t.mainQuests.size - mainQuests.size
+                    val shopDelta = t.shopItems.size - shopItems.size
+                    val minCost = t.shopItems.minOfOrNull { it.cost.coerceAtLeast(1) } ?: 0
+                    val affordableCount = t.shopItems.count { gold >= it.cost.coerceAtLeast(1) }
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Template saved! Are you sure you want to apply it now?", color = OnCardText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
                         Text("This will change theme, background, advanced settings, and quests.", color = OnCardText.copy(alpha = 0.85f), fontSize = 13.sp)
+                        Text(
+                            "Preview: Daily ${if (dailyDelta >= 0) "+" else ""}$dailyDelta, Main ${if (mainDelta >= 0) "+" else ""}$mainDelta, Shop ${if (shopDelta >= 0) "+" else ""}$shopDelta",
+                            color = OnCardText.copy(alpha = 0.84f),
+                            fontSize = 12.sp
+                        )
+                        Text(
+                            "Economy: ${if (minCost > 0) "min item $minCost gold" else "no shop items"} • affordable now $affordableCount/${t.shopItems.size}",
+                            color = OnCardText.copy(alpha = 0.72f),
+                            fontSize = 12.sp
+                        )
                         HorizontalDivider(color = OnCardText.copy(alpha=0.1f))
 
                         // NEW: Clear Existing Checkbox

@@ -491,6 +491,99 @@ fun exportGameTemplate(template: GameTemplate): String {
     }
 }
 
+private fun sanitizeQuestTemplate(q: QuestTemplate, fallbackPackageId: String): QuestTemplate {
+    val safePackage = q.packageId.ifBlank { fallbackPackageId }
+    return q.copy(
+        difficulty = q.difficulty.coerceIn(1, 5),
+        title = q.title.trim().take(64).ifBlank { "Untitled Quest" },
+        icon = q.icon.trim().ifBlank { "✅" }.take(4),
+        xp = q.xp.coerceIn(1, 5000),
+        target = q.target.coerceIn(1, 500),
+        imageUri = q.imageUri?.takeIf { it.isNotBlank() },
+        packageId = safePackage
+    )
+}
+
+private fun sanitizeMainQuest(
+    q: CustomMainQuest,
+    validIds: Set<String>,
+    fallbackPackageId: String
+): CustomMainQuest {
+    val safeSteps = q.steps.map { it.trim().take(64) }.filter { it.isNotBlank() }.ifEmpty {
+        listOf("Preparation", "Execution", "Completion")
+    }.take(8)
+    val safeCurrentStep = q.currentStep.coerceIn(0, safeSteps.size)
+    val safePackage = q.packageId.ifBlank { fallbackPackageId }
+    val safePrereq = q.prerequisiteId?.takeIf { validIds.contains(it) && it != q.id }
+    return q.copy(
+        title = q.title.trim().take(64).ifBlank { "Untitled Main Quest" },
+        description = q.description.trim().take(220),
+        xpReward = q.xpReward.coerceIn(1, 20000),
+        steps = safeSteps,
+        currentStep = safeCurrentStep,
+        prerequisiteId = safePrereq,
+        packageId = safePackage,
+        icon = q.icon.trim().ifBlank { "🏆" }.take(4),
+        imageUri = q.imageUri?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun sanitizeShopItem(s: ShopItem, fallbackPackageId: String): ShopItem {
+    val baseId = s.id.trim().ifBlank {
+        s.name.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_').ifBlank { UUID.randomUUID().toString().take(12) }
+    }
+    val safeId = "${fallbackPackageId}_${baseId.take(36)}"
+    val safeMax = s.maxStock.coerceIn(1, 99)
+    return s.copy(
+        id = safeId,
+        name = s.name.trim().take(48).ifBlank { "Untitled Item" },
+        icon = s.icon.trim().ifBlank { "🧩" }.take(4),
+        description = s.description.trim().take(160),
+        cost = s.cost.coerceIn(1, 20000),
+        stock = s.stock.coerceIn(0, safeMax),
+        maxStock = safeMax,
+        imageUri = s.imageUri?.takeIf { it.isNotBlank() }
+    )
+}
+
+private fun sanitizeTemplateSettings(settings: TemplateSettings?): TemplateSettings? {
+    if (settings == null) return null
+    return settings.copy(
+        neonFlowSpeed = settings.neonFlowSpeed.coerceIn(0, 2),
+        dailyResetHour = settings.dailyResetHour.coerceIn(0, 23),
+        fontScalePercent = settings.fontScalePercent.coerceIn(80, 125),
+        backgroundImageTransparencyPercent = settings.backgroundImageTransparencyPercent?.coerceIn(0, 100),
+        backgroundImageUri = settings.backgroundImageUri?.takeIf { it.isNotBlank() }
+    )
+}
+
+fun normalizeGameTemplateSafe(template: GameTemplate): GameTemplate {
+    val safePackageId = template.packageId.ifBlank { UUID.randomUUID().toString() }
+    val safeMainRaw = template.mainQuests
+        .distinctBy { it.id.ifBlank { it.title.lowercase() } }
+        .map { it.copy(id = it.id.ifBlank { UUID.randomUUID().toString() }) }
+    val validMainIds = safeMainRaw.map { it.id }.toSet()
+    val safeMain = safeMainRaw.map { sanitizeMainQuest(it, validMainIds, safePackageId) }
+    val safeDaily = template.dailyQuests
+        .distinctBy { it.title.trim().lowercase() }
+        .map { sanitizeQuestTemplate(it, safePackageId) }
+    val safeShop = template.shopItems
+        .distinctBy { (it.id.ifBlank { it.name }).trim().lowercase() }
+        .map { sanitizeShopItem(it, safePackageId) }
+        .distinctBy { it.id }
+    val safeTheme = runCatching { AppTheme.valueOf(template.appTheme.name) }.getOrDefault(AppTheme.DEFAULT)
+    return template.copy(
+        templateName = template.templateName.trim().take(60).ifBlank { "Imported Template" },
+        appTheme = safeTheme,
+        dailyQuests = safeDaily,
+        mainQuests = safeMain,
+        shopItems = safeShop,
+        packageId = safePackageId,
+        templateSettings = sanitizeTemplateSettings(template.templateSettings),
+        accentArgb = template.accentArgb?.toInt()?.toLong()
+    )
+}
+
 fun importGameTemplate(payload: String): GameTemplate? {
     val trimmed = payload.trim()
     if (trimmed.isBlank() || trimmed.length > MAX_TEMPLATE_PAYLOAD_CHARS) return null
@@ -498,11 +591,11 @@ fun importGameTemplate(payload: String): GameTemplate? {
         val bytes = Base64.decode(trimmed, Base64.URL_SAFE or Base64.NO_WRAP)
         if (bytes.size > MAX_TEMPLATE_COMPRESSED_BYTES) return null
         val json = gunzipToUtf8Limited(bytes, MAX_TEMPLATE_JSON_BYTES) ?: return null
-        gson.fromJson(json, GameTemplate::class.java)
+        gson.fromJson(json, GameTemplate::class.java)?.let { normalizeGameTemplateSafe(it) }
     } catch (e: Exception) {
         if (trimmed.length > MAX_TEMPLATE_JSON_BYTES) return null
         try {
-            gson.fromJson(trimmed, GameTemplate::class.java)
+            gson.fromJson(trimmed, GameTemplate::class.java)?.let { normalizeGameTemplateSafe(it) }
         } catch (e2: Exception) {
             null
         }
@@ -519,30 +612,7 @@ fun deserializeSavedTemplates(json: String?): List<GameTemplate> {
     return try {
         val type = object : com.google.gson.reflect.TypeToken<List<GameTemplate>>() {}.type
         val parsed: List<GameTemplate> = gson.fromJson(json, type) ?: emptyList()
-        parsed.mapNotNull { template ->
-            runCatching {
-                val name = runCatching { template.templateName }.getOrDefault("Imported Template").ifBlank { "Imported Template" }
-                val theme = runCatching { template.appTheme }.getOrDefault(AppTheme.DEFAULT)
-                val dailies = runCatching { template.dailyQuests }.getOrDefault(emptyList())
-                val mains = runCatching { template.mainQuests }.getOrDefault(emptyList())
-                val shop = runCatching { template.shopItems }.getOrDefault(emptyList())
-                val pkg = runCatching { template.packageId }.getOrDefault("").ifBlank { java.util.UUID.randomUUID().toString() }
-                val settings = runCatching { template.templateSettings }.getOrNull()
-                val accent = runCatching { template.accentArgb }.getOrNull()
-                val premium = runCatching { template.isPremium }.getOrDefault(false)
-                GameTemplate(
-                    templateName = name,
-                    appTheme = theme,
-                    dailyQuests = dailies,
-                    mainQuests = mains,
-                    shopItems = shop,
-                    packageId = pkg,
-                    templateSettings = settings,
-                    accentArgb = accent,
-                    isPremium = premium
-                )
-            }.getOrNull()
-        }
+        parsed.mapNotNull { runCatching { normalizeGameTemplateSafe(it) }.getOrNull() }
     } catch (e: Exception) {
         emptyList()
     }

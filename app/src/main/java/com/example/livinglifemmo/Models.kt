@@ -232,6 +232,8 @@ data class Achievement(
     val unlocked: Boolean = false
 )
 
+enum class TemplateTrustLevel { VERIFIED_SAFE, SANITIZED, FLAGGED }
+
 data class CommunityPost(
     val id: String = java.util.UUID.randomUUID().toString(),
     val authorId: String,
@@ -244,7 +246,8 @@ data class CommunityPost(
     val ratingAverage: Double = 0.0,
     val ratingCount: Int = 0,
     val remixCount: Int = 0,
-    val sourcePostId: String? = null
+    val sourcePostId: String? = null,
+    val templateTrust: TemplateTrustLevel = TemplateTrustLevel.VERIFIED_SAFE
 )
 
 enum class CommunitySyncTaskType { PUBLISH_POST, FOLLOW_AUTHOR, UNFOLLOW_AUTHOR, RATE_POST, INCREMENT_REMIX }

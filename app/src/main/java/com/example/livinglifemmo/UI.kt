@@ -101,9 +101,11 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.text.DateFormat
 import java.util.UUID
 import java.io.File
@@ -331,7 +333,7 @@ fun HomeScreen(
     var nameDraft by remember(playerName) { mutableStateOf(playerName) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { picked ->
         if (picked != null) {
-            appContext.contentResolver.takePersistableUriPermission(picked, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            runCatching { appContext.contentResolver.takePersistableUriPermission(picked, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             onChangeAvatar(Avatar.Custom(picked))
         }
     }
@@ -1118,7 +1120,7 @@ fun MainQuestsScreen(
 ) {
     var questForWizard by remember { mutableStateOf<CustomMainQuest?>(null) }
     data class MainQuestFamily(val key: String, val header: CustomMainQuest, val chain: List<CustomMainQuest>)
-    val (familyGroups, displayPrereqById) = remember(quests) {
+    val (familyGroups, displayPrereqById, chainDiagnostics) = remember(quests) {
         data class ParsedMainQuest(val quest: CustomMainQuest, val index: Int, val familyKey: String, val familyTier: Int?)
         fun parseFamily(title: String): Pair<String, Int?> {
             val m = Regex("""^(.*?)(?:\s+(\d+))$""").find(title.trim())
@@ -1134,6 +1136,8 @@ fun MainQuestsScreen(
         val groups = parsed.groupBy { it.familyKey }.entries.sortedBy { (_, g) -> g.minOf { it.index } }
         val families = mutableListOf<MainQuestFamily>()
         val prereqMap = mutableMapOf<String, String?>()
+        var brokenPrereqCount = 0
+        var crossFamilyPrereqCount = 0
         groups.forEach { (familyKey, group) ->
             val tiered = group.filter { it.familyTier != null }
             val sorted = if (tiered.size >= 2) {
@@ -1144,6 +1148,8 @@ fun MainQuestsScreen(
             sorted.forEachIndexed { i, p ->
                 val explicitPrereq = p.quest.prerequisiteId
                 val explicitPrereqInFamily = explicitPrereq != null && sorted.any { it.quest.id == explicitPrereq }
+                if (explicitPrereq != null && !indexById.containsKey(explicitPrereq)) brokenPrereqCount++
+                if (explicitPrereq != null && indexById.containsKey(explicitPrereq) && !explicitPrereqInFamily && tiered.size >= 2) crossFamilyPrereqCount++
                 prereqMap[p.quest.id] = if (tiered.size >= 2) {
                     if (i == 0) null
                     else if (explicitPrereqInFamily) explicitPrereq
@@ -1159,7 +1165,7 @@ fun MainQuestsScreen(
                 .sortedWith(compareBy<CustomMainQuest> { it.isClaimed }.thenBy { indexById[it.id] ?: Int.MAX_VALUE })
             families += MainQuestFamily(key = familyKey, header = header, chain = chain)
         }
-        families to prereqMap
+        Triple(families, prereqMap, brokenPrereqCount to crossFamilyPrereqCount)
     }
 
     ScalableScreen(modifier) { uiScale ->
@@ -1183,6 +1189,24 @@ fun MainQuestsScreen(
                         }
                     }
                 } else {
+                    if (chainDiagnostics.first > 0 || chainDiagnostics.second > 0) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.Black.copy(alpha = 0.20f))
+                                    .border(1.dp, OnCardText.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                            ) {
+                                Text(
+                                    "Chain auto-fix active: repaired ${chainDiagnostics.first} broken links and ignored ${chainDiagnostics.second} cross-family locks.",
+                                    color = OnCardText.copy(alpha = 0.78f),
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
                     items(familyGroups, key = { it.key }) { family ->
                         val q = family.header
                         val prerequisite = quests.find { it.id == displayPrereqById[q.id] }
@@ -2307,10 +2331,12 @@ fun SettingsScreen(
     ScalableScreen(modifier) { uiScale ->
         val context = androidx.compose.ui.platform.LocalContext.current
         val clipboard = LocalClipboardManager.current
+        val advancedTemplateScope = rememberCoroutineScope()
         var advancedTemplateImportResult by remember { mutableStateOf<AdvancedTemplateImportResult?>(null) }
+        var advancedTemplateImportBusy by remember { mutableStateOf(false) }
         val bgPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
                 onBackgroundImageChanged(uri.toString())
             }
         }
@@ -2325,10 +2351,49 @@ fun SettingsScreen(
         }
         val advancedTemplateImportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
             if (uri != null) {
-                runCatching {
-                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }.orEmpty()
-                }.getOrNull()?.let { json ->
-                    advancedTemplateImportResult = onImportAdvancedTemplateJson(json)
+                val importText = runCatching {
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { reader ->
+                        val limit = 1_000_000
+                        val sb = StringBuilder()
+                        val buf = CharArray(8192)
+                        while (true) {
+                            val n = reader.read(buf)
+                            if (n <= 0) break
+                            if (sb.length + n > limit) {
+                                throw IllegalArgumentException("JSON too large. Keep file under ~1MB.")
+                            }
+                            sb.append(buf, 0, n)
+                        }
+                        sb.toString()
+                    }.orEmpty()
+                }
+                importText.exceptionOrNull()?.let { e ->
+                    advancedTemplateImportResult = AdvancedTemplateImportResult(
+                        success = false,
+                        templateName = "Unnamed",
+                        dailyAdded = 0,
+                        mainAdded = 0,
+                        errors = listOf(e.message ?: "Failed to read file.")
+                    )
+                }
+                importText.getOrNull()?.let { json ->
+                    if (json.length > 1_000_000) {
+                        advancedTemplateImportResult = AdvancedTemplateImportResult(
+                            success = false,
+                            templateName = "Unnamed",
+                            dailyAdded = 0,
+                            mainAdded = 0,
+                            errors = listOf("JSON too large. Keep file under ~1MB.")
+                        )
+                    } else {
+                        advancedTemplateImportBusy = true
+                        advancedTemplateScope.launch {
+                            advancedTemplateImportResult = withContext(Dispatchers.Default) {
+                                onImportAdvancedTemplateJson(json)
+                            }
+                            advancedTemplateImportBusy = false
+                        }
+                    }
                 }
             }
         }
@@ -3236,10 +3301,34 @@ fun SettingsScreen(
                                         ) { Text("Upload JSON File", maxLines = 1) }
                                     }
                                     Button(
-                                        onClick = { advancedTemplateImportResult = onImportAdvancedTemplateJson(advancedTemplateJsonDraft) },
+                                        onClick = {
+                                            val draft = advancedTemplateJsonDraft
+                                            if (draft.length > 1_000_000) {
+                                                advancedTemplateImportResult = AdvancedTemplateImportResult(
+                                                    success = false,
+                                                    templateName = "Unnamed",
+                                                    dailyAdded = 0,
+                                                    mainAdded = 0,
+                                                    errors = listOf("JSON too large. Keep text under ~1MB.")
+                                                )
+                                            } else {
+                                                advancedTemplateImportBusy = true
+                                                advancedTemplateScope.launch {
+                                                    advancedTemplateImportResult = withContext(Dispatchers.Default) {
+                                                        onImportAdvancedTemplateJson(draft)
+                                                    }
+                                                    advancedTemplateImportBusy = false
+                                                }
+                                            }
+                                        },
+                                        enabled = !advancedTemplateImportBusy,
                                         modifier = Modifier.fillMaxWidth(),
                                         colors = ButtonDefaults.buttonColors(containerColor = accentStrong, contentColor = Color.Black)
                                     ) { Text("Analyze & Create Template", fontWeight = FontWeight.Bold) }
+                                    if (advancedTemplateImportBusy) {
+                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = accentStrong)
+                                        Text("Analyzing JSON...", color = OnCardText.copy(alpha = 0.72f), fontSize = 12.sp)
+                                    }
                                     Text(
                                         "Prompt tip: ask AI to return a downloadable file named questify_advanced_template.json (or raw JSON only if files are not supported).",
                                         color = OnCardText.copy(alpha = 0.68f),
@@ -3746,7 +3835,7 @@ fun WelcomeSetupScreen(
     val stepProgress = (stepNumber.toFloat() / stepsTotal.toFloat()).coerceIn(0f, 1f)
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { picked ->
         if (picked != null) {
-            context.contentResolver.takePersistableUriPermission(picked, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            runCatching { context.contentResolver.takePersistableUriPermission(picked, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             pickedAvatarUri = picked.toString()
         }
     }
@@ -4647,6 +4736,17 @@ fun CommunityPostCard(
     val postNeonSecondary = neonPaletteColor(ThemeRuntime.neonGlowPalette, postBoostedNeon)
     val postNeonBrush = if (postNeonEnabled) rememberNeonBorderBrush(accentStrong, postNeonSecondary) else null
     val postCardShape = RoundedCornerShape(14.dp)
+    val trustBadgeLabel = when (post.templateTrust) {
+        TemplateTrustLevel.VERIFIED_SAFE -> "Verified Safe"
+        TemplateTrustLevel.SANITIZED -> "Sanitized"
+        TemplateTrustLevel.FLAGGED -> "Flagged"
+    }
+    val trustBadgeColor = when (post.templateTrust) {
+        TemplateTrustLevel.VERIFIED_SAFE -> Color(0xFF26A69A)
+        TemplateTrustLevel.SANITIZED -> Color(0xFFFFB300)
+        TemplateTrustLevel.FLAGGED -> Color(0xFFE53935)
+    }
+    val canApplyTemplate = interactionsEnabled && post.templateTrust != TemplateTrustLevel.FLAGGED
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -4696,9 +4796,19 @@ fun CommunityPostCard(
                             fontSize = 15.sp,
                             modifier = Modifier.weight(1f)
                         )
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(trustBadgeColor.copy(alpha = 0.18f))
+                                .border(1.dp, trustBadgeColor.copy(alpha = 0.45f), RoundedCornerShape(999.dp))
+                                .padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(trustBadgeLabel, color = trustBadgeColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Spacer(Modifier.width(6.dp))
                         Button(
                             onClick = onRemix,
-                            enabled = interactionsEnabled,
+                            enabled = canApplyTemplate,
                             colors = ButtonDefaults.buttonColors(containerColor = accentStrong),
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                             modifier = Modifier.height(26.dp)
@@ -4804,6 +4914,19 @@ fun CommunityPostCard(
                             }
                         }
                     }
+                }
+                if (post.templateTrust == TemplateTrustLevel.FLAGGED) {
+                    Text(
+                        "Template flagged for safety review. Applying is disabled.",
+                        color = Color(0xFFE57373),
+                        fontSize = 12.sp
+                    )
+                } else if (post.templateTrust == TemplateTrustLevel.SANITIZED) {
+                    Text(
+                        "Template was auto-cleaned for safe import.",
+                        color = Color(0xFFFFCC80),
+                        fontSize = 12.sp
+                    )
                 }
 
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -5730,7 +5853,7 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
     val context = androidx.compose.ui.platform.LocalContext.current
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             imageUri = uri.toString()
         }
     }
@@ -7364,7 +7487,7 @@ fun ShopItemEditorDialog(accentStrong: Color, initial: ShopItem?, onSave: (ShopI
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
             runCatching {
-                context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             }
             imageUri = uri.toString()
         }
@@ -7839,7 +7962,7 @@ fun AddMainQuestDialog(
     var imageUri by remember { mutableStateOf(editingQuest?.imageUri.orEmpty()) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
-            context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             imageUri = uri.toString()
         }
     }
