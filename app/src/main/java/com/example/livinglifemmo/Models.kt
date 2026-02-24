@@ -7,6 +7,8 @@ import com.google.gson.annotations.SerializedName
 
 enum class QuestCategory { FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND }
 
+enum class QuestObjectiveType { COUNT, TIMER, HEALTH }
+
 enum class AppTheme { DEFAULT, LIGHT, CYBERPUNK }
 enum class AppFontStyle {
     DEFAULT,
@@ -81,7 +83,11 @@ data class Quest(
     val currentProgress: Int = 0,
     val completed: Boolean = false,
     val imageUri: String? = null,
-    val packageId: String = "user_created" // NEW: Active quests need this tag too!
+    val packageId: String = "user_created", // NEW: Active quests need this tag too!
+    val objectiveType: QuestObjectiveType = QuestObjectiveType.COUNT,
+    val targetSeconds: Int? = null,
+    val healthMetric: String? = null,
+    val healthAggregation: String? = null
 )
 
 // Updated for Gson serialization
@@ -94,7 +100,11 @@ data class QuestTemplate(
     val target: Int = 1,
     val isPinned: Boolean = false,
     val imageUri: String? = null,
-    val packageId: String = "user_created" // NEW: Templates need this tag!
+    val packageId: String = "user_created", // NEW: Templates need this tag!
+    val objectiveType: QuestObjectiveType = QuestObjectiveType.COUNT,
+    val targetSeconds: Int? = null,
+    val healthMetric: String? = null,
+    val healthAggregation: String? = null
 )
 
 sealed class Avatar {
@@ -185,7 +195,11 @@ data class CustomTemplate(
     val isPinned: Boolean = false,
     val imageUri: String? = null,
     val packageId: String = "user_created",
-    val isActive: Boolean = true // NEW: The Toggle Switch
+    val isActive: Boolean = true, // NEW: The Toggle Switch
+    val objectiveType: QuestObjectiveType = QuestObjectiveType.COUNT,
+    val targetSeconds: Int? = null,
+    val healthMetric: String? = null,
+    val healthAggregation: String? = null
 )
 
 // Main Quest Template
@@ -221,7 +235,43 @@ data class JournalPage(
     val voiceNoteSubmittedAt: Map<String, Long> = emptyMap(),
     val voiceNoteNames: Map<String, String> = emptyMap(),
     val voiceTranscript: String? = null, // legacy single-transcript field
-    val voiceNoteTranscripts: Map<String, String> = emptyMap()
+    val voiceNoteTranscripts: Map<String, String> = emptyMap(),
+    val richBlocks: List<JournalBlock> = emptyList(),
+    val pageLayout: String = "standard"
+)
+
+data class JournalSpan(
+    val start: Int,
+    val end: Int,
+    val bold: Boolean = false,
+    val italic: Boolean = false,
+    val underline: Boolean = false,
+    val colorArgb: Long? = null,
+    val fontScalePercent: Int? = null
+)
+
+data class JournalBlock(
+    val text: String,
+    val fontStyle: AppFontStyle = AppFontStyle.DEFAULT,
+    val fontScalePercent: Int = 100,
+    val colorArgb: Long? = null,
+    val spans: List<JournalSpan> = emptyList()
+)
+
+data class QuestTimerState(
+    val questId: Int,
+    val startedAtMillis: Long? = null,
+    val elapsedMillis: Long = 0L,
+    val isRunning: Boolean = false
+)
+
+data class HealthDailySnapshot(
+    val epochDay: Long,
+    val steps: Int = 0,
+    val avgHeartRate: Int? = null,
+    val distanceMeters: Float = 0f,
+    val caloriesKcal: Float = 0f,
+    val source: String = "manual"
 )
 
 data class Achievement(
@@ -248,6 +298,18 @@ data class CommunityPost(
     val remixCount: Int = 0,
     val sourcePostId: String? = null,
     val templateTrust: TemplateTrustLevel = TemplateTrustLevel.VERIFIED_SAFE
+)
+
+data class CommunityComment(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val postId: String,
+    val authorId: String,
+    val authorName: String,
+    val body: String,
+    val createdAtMillis: Long = System.currentTimeMillis(),
+    val upVotes: Int = 0,
+    val downVotes: Int = 0,
+    val myVote: Int = 0
 )
 
 enum class CommunitySyncTaskType { PUBLISH_POST, FOLLOW_AUTHOR, UNFOLLOW_AUTHOR, RATE_POST, INCREMENT_REMIX }
@@ -301,7 +363,11 @@ data class AdvancedDailyQuestEntry(
     val target: Int = 1,
     val icon: String = "✅",
     val pinned: Boolean = false,
-    val image_uri: String? = null
+    val image_uri: String? = null,
+    val objective_type: String = "COUNT",
+    val target_seconds: Int? = null,
+    val health_metric: String? = null,
+    val health_aggregation: String? = null
 )
 
 data class AdvancedMainQuestEntry(
@@ -328,7 +394,7 @@ data class AdvancedShopItemEntry(
 )
 
 data class AdvancedTemplateFile(
-    val schema_version: Int = 1,
+    val schema_version: Int = 2,
     val template_name: String = "AI Generated Template",
     val app_theme: String = "DEFAULT",
     val accent_argb: Long? = null,

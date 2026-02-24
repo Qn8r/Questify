@@ -515,6 +515,72 @@ object SupabaseApi {
         false
     }
 
+    suspend fun fetchComments(postId: String): List<CommunityComment> = withContext(Dispatchers.IO) {
+        if (!isConfigured || postId.isBlank()) return@withContext emptyList()
+        val (code, raw) = request(
+            method = "GET",
+            path = "/rest/v1/community_comments",
+            query = mapOf(
+                "select" to "*",
+                "post_id" to "eq.$postId",
+                "order" to "created_at.asc",
+                "limit" to "200"
+            )
+        )
+        if (code !in 200..299 || raw.isBlank()) return@withContext emptyList()
+        runCatching {
+            gson.fromJson(raw, Array<CommunityCommentRow>::class.java)?.map { it.toDomain() }.orEmpty()
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun postComment(postId: String, userId: String, userName: String, body: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isConfigured || postId.isBlank() || userId.isBlank() || body.isBlank()) return@withContext false
+        val payload = mapOf(
+            "post_id" to postId,
+            "author_id" to userId.trim(),
+            "author_name" to userName.trim().ifBlank { "Player" },
+            "body" to body.trim().take(500),
+            "created_at" to toIso(System.currentTimeMillis())
+        )
+        val (code, _) = request(
+            method = "POST",
+            path = "/rest/v1/community_comments",
+            body = gson.toJson(listOf(payload))
+        )
+        code in 200..299
+    }
+
+    suspend fun voteComment(commentId: String, userId: String, vote: Int): Boolean = withContext(Dispatchers.IO) {
+        if (!isConfigured || commentId.isBlank() || userId.isBlank()) return@withContext false
+        val safeVote = vote.coerceIn(-1, 1)
+        val payload = mapOf(
+            "comment_id" to commentId,
+            "user_id" to userId,
+            "vote" to safeVote
+        )
+        val (code, _) = request(
+            method = "POST",
+            path = "/rest/v1/community_comment_votes",
+            query = mapOf("on_conflict" to "comment_id,user_id"),
+            body = gson.toJson(listOf(payload)),
+            prefer = "resolution=merge-duplicates"
+        )
+        code in 200..299
+    }
+
+    suspend fun fetchMyCommentVotes(userId: String): Map<String, Int> = withContext(Dispatchers.IO) {
+        if (!isConfigured || userId.isBlank()) return@withContext emptyMap()
+        val (code, raw) = request(
+            method = "GET",
+            path = "/rest/v1/community_comment_votes",
+            query = mapOf("select" to "comment_id,vote", "user_id" to "eq.$userId")
+        )
+        if (code !in 200..299 || raw.isBlank()) return@withContext emptyMap()
+        runCatching {
+            gson.fromJson(raw, Array<CommentVoteRow>::class.java)?.associate { it.commentId to it.vote.coerceIn(-1, 1) }.orEmpty()
+        }.getOrDefault(emptyMap())
+    }
+
     private data class CommunityPostRow(
         val id: String,
         @SerializedName("author_id") val authorId: String,
@@ -579,6 +645,34 @@ object SupabaseApi {
         @SerializedName("user_id") val userId: String,
         @SerializedName("post_id") val postId: String,
         val stars: Int
+    )
+
+
+    private data class CommunityCommentRow(
+        val id: String,
+        @SerializedName("post_id") val postId: String,
+        @SerializedName("author_id") val authorId: String,
+        @SerializedName("author_name") val authorName: String,
+        val body: String,
+        @SerializedName("created_at") val createdAt: String,
+        @SerializedName("up_votes") val upVotes: Int? = null,
+        @SerializedName("down_votes") val downVotes: Int? = null
+    ) {
+        fun toDomain(): CommunityComment = CommunityComment(
+            id = id,
+            postId = postId,
+            authorId = authorId,
+            authorName = authorName,
+            body = body,
+            createdAtMillis = toEpochMillis(createdAt),
+            upVotes = upVotes ?: 0,
+            downVotes = downVotes ?: 0
+        )
+    }
+
+    private data class CommentVoteRow(
+        @SerializedName("comment_id") val commentId: String,
+        val vote: Int
     )
 
     private data class PostRatingValue(val stars: Int)

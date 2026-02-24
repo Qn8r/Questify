@@ -68,10 +68,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -88,9 +91,15 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -98,6 +107,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import coil.compose.AsyncImage
@@ -107,10 +118,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.text.DateFormat
+import androidx.health.connect.client.PermissionController
+import androidx.health.connect.client.permission.HealthPermission
+import androidx.health.connect.client.records.StepsRecord
+import androidx.health.connect.client.records.HeartRateRecord
+import androidx.health.connect.client.records.DistanceRecord
+import androidx.health.connect.client.records.TotalCaloriesBurnedRecord
 import java.util.UUID
 import java.io.File
 import java.util.Locale
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.drawscope.Stroke
 import kotlin.math.roundToInt
 import kotlin.math.atan2
 import kotlin.math.cos
@@ -1500,7 +1518,11 @@ fun JournalScreen(
                         }
                         .padding(start = 16.dp, end = 16.dp, bottom = (10.dp * uiScale).coerceAtLeast(8.dp))
                 ) {
-                    if (isSaving.value) { Text("Saving...", color = fieldTint, fontSize = 10.sp, fontWeight = FontWeight.Bold); Spacer(Modifier.height(4.dp)) }
+                    Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.CenterStart) {
+                        if (isSaving.value) {
+                            Text("Saving...", color = fieldTint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
                             HorizontalPager(
                                 state = pagerState,
                                 modifier = Modifier
@@ -1679,7 +1701,147 @@ fun JournalScreen(
                                                     }
                                                 }
                                             }
-                                            OutlinedTextField(value = page.text, onValueChange = { setPage(index, page.copy(text = it.take(900))) }, modifier = Modifier.fillMaxSize(), placeholder = { Text("Write your notes...", color = fieldPlaceholder.copy(alpha = 0.85f), fontSize = (14.sp * uiScale)) }, textStyle = LocalTextStyle.current.copy(color = fieldText, fontSize = (14.sp * uiScale), lineHeight = (20.sp * uiScale)), colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = fieldTint.copy(alpha = 0.35f), unfocusedBorderColor = fieldTint.copy(alpha = 0.18f), cursorColor = fieldTint), shape = RoundedCornerShape(14.dp))
+                                            val pageBlock = page.richBlocks.firstOrNull() ?: JournalBlock(text = page.text)
+                                            var editorValue by remember(index) { mutableStateOf(TextFieldValue(page.text, TextRange(page.text.length))) }
+                                            LaunchedEffect(page.text, index) {
+                                                if (editorValue.text != page.text) {
+                                                    val safeCursor = editorValue.selection.end.coerceIn(0, page.text.length)
+                                                    editorValue = TextFieldValue(page.text, TextRange(safeCursor))
+                                                }
+                                            }
+                                            val selStart = minOf(editorValue.selection.start, editorValue.selection.end).coerceIn(0, editorValue.text.length)
+                                            val selEnd = maxOf(editorValue.selection.start, editorValue.selection.end).coerceIn(0, editorValue.text.length)
+                                            val hasSelection = selEnd > selStart
+                                            val activeSpan = if (hasSelection) {
+                                                pageBlock.spans.firstOrNull { it.start <= selStart && it.end >= selEnd }
+                                            } else {
+                                                pageBlock.spans.firstOrNull { it.start <= selStart && it.end >= selStart }
+                                            }
+                                            val pageSpan = activeSpan
+                                            val isBold = pageSpan?.bold == true
+                                            val isItalic = pageSpan?.italic == true
+                                            val isUnderline = pageSpan?.underline == true
+                                            val textColor = pageBlock.colorArgb?.let { Color(it.toInt()) } ?: fieldText
+                                            val textSize = (pageSpan?.fontScalePercent ?: pageBlock.fontScalePercent).coerceIn(80, 160)
+                                            fun applySelectionSpan(nextBold: Boolean, nextItalic: Boolean, nextUnderline: Boolean) {
+                                                if (!hasSelection) return
+                                                val kept = pageBlock.spans.filter { it.end <= selStart || it.start >= selEnd }
+                                                val nextSpan = JournalSpan(selStart, selEnd, bold = nextBold, italic = nextItalic, underline = nextUnderline)
+                                                setPage(
+                                                    index,
+                                                    page.copy(
+                                                        richBlocks = listOf(pageBlock.copy(text = editorValue.text, spans = (kept + nextSpan).sortedBy { it.start })),
+                                                        editedAtMillis = System.currentTimeMillis()
+                                                    )
+                                                )
+                                            }
+                                            fun applySelectionSize(nextSize: Int) {
+                                                if (!hasSelection) return
+                                                val kept = pageBlock.spans.filter { it.end <= selStart || it.start >= selEnd }
+                                                val nextSpan = JournalSpan(
+                                                    start = selStart,
+                                                    end = selEnd,
+                                                    bold = isBold,
+                                                    italic = isItalic,
+                                                    underline = isUnderline,
+                                                    fontScalePercent = nextSize.coerceIn(80, 160)
+                                                )
+                                                setPage(
+                                                    index,
+                                                    page.copy(
+                                                        richBlocks = listOf(pageBlock.copy(text = editorValue.text, spans = (kept + nextSpan).sortedBy { it.start })),
+                                                        editedAtMillis = System.currentTimeMillis()
+                                                    )
+                                                )
+                                            }
+                                            val spanVisual = remember(pageBlock.spans, textColor, textSize) {
+                                                VisualTransformation { input ->
+                                                    val source = input.text
+                                                    val b = AnnotatedString.Builder(source)
+                                                    pageBlock.spans.forEach { s ->
+                                                        val start = s.start.coerceIn(0, source.length)
+                                                        val end = s.end.coerceIn(0, source.length)
+                                                        if (end > start) {
+                                                            b.addStyle(
+                                                                SpanStyle(
+                                                                    color = textColor,
+                                                                    fontSize = ((14f * (s.fontScalePercent ?: textSize).coerceIn(80, 160)) / 100f).sp,
+                                                                    fontWeight = if (s.bold) FontWeight.Bold else FontWeight.Normal,
+                                                                    fontStyle = if (s.italic) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
+                                                                    textDecoration = if (s.underline) androidx.compose.ui.text.style.TextDecoration.Underline else androidx.compose.ui.text.style.TextDecoration.None
+                                                                ),
+                                                                start,
+                                                                end
+                                                            )
+                                                        }
+                                                    }
+                                                    TransformedText(b.toAnnotatedString(), OffsetMapping.Identity)
+                                                }
+                                            }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                SmallActionPill(text = "B", enabled = true, accentSoft = if (isBold) fieldTint else SubtlePanel, onClick = {
+                                                    applySelectionSpan(!isBold, isItalic, isUnderline)
+                                                })
+                                                SmallActionPill(text = "I", enabled = true, accentSoft = if (isItalic) fieldTint else SubtlePanel, onClick = {
+                                                    applySelectionSpan(isBold, !isItalic, isUnderline)
+                                                })
+                                                SmallActionPill(text = "U", enabled = true, accentSoft = if (isUnderline) fieldTint else SubtlePanel, onClick = {
+                                                    applySelectionSpan(isBold, isItalic, !isUnderline)
+                                                })
+                                                Spacer(Modifier.weight(1f))
+                                                SmallActionPill(text = "A-", enabled = true, accentSoft = SubtlePanel, onClick = {
+                                                    val next = (textSize - 2).coerceAtLeast(80)
+                                                    applySelectionSize(next)
+                                                })
+                                                Text("${textSize}%", color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                SmallActionPill(text = "A+", enabled = true, accentSoft = fieldTint, onClick = {
+                                                    val next = (textSize + 2).coerceAtMost(160)
+                                                    applySelectionSize(next)
+                                                })
+                                            }
+                                            OutlinedTextField(
+                                                value = editorValue,
+                                                onValueChange = {
+                                                    val safeText = it.text.take(900)
+                                                    val safeSelStart = minOf(it.selection.start, safeText.length)
+                                                    val safeSelEnd = minOf(it.selection.end, safeText.length)
+                                                    editorValue = TextFieldValue(safeText, TextRange(safeSelStart, safeSelEnd))
+                                                    val adjustedSpans = pageBlock.spans.mapNotNull { span ->
+                                                        val start = span.start.coerceIn(0, safeText.length)
+                                                        val end = span.end.coerceIn(0, safeText.length)
+                                                        if (end > start) span.copy(start = start, end = end) else null
+                                                    }
+                                                    setPage(
+                                                        index,
+                                                        page.copy(
+                                                            text = safeText,
+                                                            richBlocks = listOf(pageBlock.copy(text = safeText, spans = adjustedSpans)),
+                                                            editedAtMillis = System.currentTimeMillis()
+                                                        )
+                                                    )
+                                                },
+                                                visualTransformation = spanVisual,
+                                                modifier = Modifier.fillMaxSize(),
+                                                placeholder = { Text("Write your notes...", color = fieldPlaceholder.copy(alpha = 0.85f), fontSize = (14.sp * uiScale)) },
+                                                textStyle = LocalTextStyle.current.copy(
+                                                    color = textColor,
+                                                    fontSize = ((14f * textSize) / 100f).sp,
+                                                    lineHeight = ((20f * textSize) / 100f).sp,
+                                                    fontWeight = FontWeight.Normal,
+                                                    fontStyle = androidx.compose.ui.text.font.FontStyle.Normal,
+                                                    textDecoration = androidx.compose.ui.text.style.TextDecoration.None
+                                                ),
+                                                colors = OutlinedTextFieldDefaults.colors(
+                                                    focusedBorderColor = fieldTint.copy(alpha = 0.35f),
+                                                    unfocusedBorderColor = fieldTint.copy(alpha = 0.18f),
+                                                    cursorColor = fieldTint
+                                                ),
+                                                shape = RoundedCornerShape(14.dp)
+                                            )
                                         }
                                         if (!showCover) {
                                             Box(
@@ -2055,33 +2217,17 @@ fun CalendarScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text("Plans for ${formatEpochDayFull(selectedDay)}", color = accentStrong, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
                             FilledTonalIconButton(
-                                onClick = {
-                                    selectedDay -= 1L
-                                    val (y, m, _) = ymdFromEpoch(selectedDay)
-                                    year = y
-                                    month = m
-                                },
-                                modifier = Modifier.size(30.dp),
-                                colors = IconButtonDefaults.filledTonalIconButtonColors(
-                                    containerColor = accentStrong.copy(alpha = 0.18f),
-                                    contentColor = OnCardText
-                                )
-                            ) {
-                                Icon(Icons.Default.Remove, null, tint = OnCardText, modifier = Modifier.size(16.dp))
-                            }
-                            Spacer(Modifier.width(6.dp))
-                            FilledTonalIconButton(
                                 onClick = { showAddPlanDialog = true },
-                                modifier = Modifier.size(30.dp),
+                                modifier = Modifier.size(36.dp),
                                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                                     containerColor = accentStrong.copy(alpha = 0.18f),
                                     contentColor = OnCardText
                                 )
                             ) {
-                                Icon(Icons.Default.Add, null, tint = OnCardText, modifier = Modifier.size(16.dp))
+                                Icon(Icons.Default.Add, null, tint = OnCardText, modifier = Modifier.size(20.dp))
                             }
                         }
-                        Text("Tap - for previous day, + to add a plan for this day.", color = OnCardText.copy(alpha = 0.64f), fontSize = 12.sp)
+                        Text("Tap + to add a plan for this day.", color = OnCardText.copy(alpha = 0.64f), fontSize = 12.sp)
                     }
                 }
                 item {
@@ -4283,6 +4429,7 @@ fun CommunityScreen(
     mutedAuthorIds: Set<String>,
     blockedAuthorIds: Set<String>,
     myRatings: Map<String, Int>,
+    commentsByPost: Map<String, List<CommunityComment>>,
     pendingSyncCount: Int,
     isRefreshing: Boolean,
     onRefresh: () -> Unit,
@@ -4294,12 +4441,14 @@ fun CommunityScreen(
     onReport: (String) -> Unit,
     onRate: (String, Int) -> Unit,
     onRemix: (CommunityPost) -> Unit,
+    onSubmitComment: (String, String) -> Unit,
+    onVoteComment: (String, String, Int) -> Unit,
     onOpenDrawer: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     @Suppress("DEPRECATION")
     val clipboard = LocalClipboardManager.current
-    val communityLocked = true
+    val communityLocked = false
     var selectedTab by remember { mutableIntStateOf(0) }
     var tabOffset by remember { mutableFloatStateOf(0f) }
     var tabPageWidthPx by remember { mutableFloatStateOf(1f) }
@@ -4310,7 +4459,7 @@ fun CommunityScreen(
     var communitySortMode by rememberSaveable { mutableStateOf("popular") }
     var publishSection by rememberSaveable { mutableIntStateOf(0) }
     var displayNameDraft by remember(currentUserName) { mutableStateOf(currentUserName) }
-    var expandedPostIds by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var selectedCommunityPostId by rememberSaveable { mutableStateOf<String?>(null) }
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val tabProgress = run {
         val rawOffset = if (isRtl) -tabOffset else tabOffset
@@ -4363,6 +4512,9 @@ fun CommunityScreen(
                 post.tags.any { it.lowercase().contains(q) }
         }
     }
+    val selectedCommunityPost = remember(selectedCommunityPostId, sortedPosts) {
+        sortedPosts.firstOrNull { it.id == selectedCommunityPostId }
+    }
 
     ScalableScreen(modifier) { uiScale ->
         PullToRefreshBox(
@@ -4394,7 +4546,6 @@ fun CommunityScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .alpha(0.45f)
                         .padding(horizontal = 16.dp)
                         .clip(RoundedCornerShape(12.dp))
                         .background(CardDarkBlue)
@@ -4408,11 +4559,17 @@ fun CommunityScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .alpha(0.42f)
                         .onSizeChanged { size ->
                             tabPageWidthPx = size.width.toFloat().coerceAtLeast(1f)
                         }
                 ) {
+                Text(
+                    "EXPERIMENTAL",
+                    color = OnCardText.copy(alpha = 0.07f),
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.Black,
+                    modifier = Modifier.align(Alignment.Center).graphicsLayer { rotationZ = -16f }
+                )
                 val widthPx = tabPageWidthPx.coerceAtLeast(1f)
                 val threshold = widthPx * 0.28f
                 val touchSlop = 24f
@@ -4463,7 +4620,6 @@ fun CommunityScreen(
                                 OutlinedTextField(
                                     value = displayNameDraft,
                                     onValueChange = { displayNameDraft = it },
-                                    enabled = false,
                                     label = { Text(stringResource(R.string.comm_display_name), color = OnCardText.copy(alpha = 0.6f)) },
                                     singleLine = true,
                                     modifier = centeredField,
@@ -4477,10 +4633,21 @@ fun CommunityScreen(
                                                 cursorColor = accentStrong
                                             )
                                         )
-                                OutlinedTextField(value = publishTitle, onValueChange = { publishTitle = it }, enabled = false, label = { Text(stringResource(R.string.comm_challenge_title), color = OnCardText.copy(alpha = 0.6f)) }, singleLine = true, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
-                                OutlinedTextField(value = publishDesc, onValueChange = { publishDesc = it }, enabled = false, label = { Text(stringResource(R.string.comm_description), color = OnCardText.copy(alpha = 0.6f)) }, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
-                                OutlinedTextField(value = publishTags, onValueChange = { publishTags = it }, enabled = false, label = { Text(stringResource(R.string.comm_tags_hint), color = OnCardText.copy(alpha = 0.6f)) }, singleLine = true, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
-                                Button(onClick = { }, enabled = false, modifier = Modifier.fillMaxWidth(0.95f).align(Alignment.CenterHorizontally), colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.comm_publish_btn), color = Color.Black, fontWeight = FontWeight.Black) }
+                                OutlinedTextField(value = publishTitle, onValueChange = { publishTitle = it }, label = { Text(stringResource(R.string.comm_challenge_title), color = OnCardText.copy(alpha = 0.6f)) }, singleLine = true, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                                OutlinedTextField(value = publishDesc, onValueChange = { publishDesc = it }, label = { Text(stringResource(R.string.comm_description), color = OnCardText.copy(alpha = 0.6f)) }, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                                OutlinedTextField(value = publishTags, onValueChange = { publishTags = it }, label = { Text(stringResource(R.string.comm_tags_hint), color = OnCardText.copy(alpha = 0.6f)) }, singleLine = true, modifier = centeredField, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                                Button(
+                                    onClick = {
+                                        onChangeUserName(displayNameDraft)
+                                        onPublish(publishTitle, publishDesc, publishTags)
+                                        publishTitle = ""
+                                        publishDesc = ""
+                                        publishTags = ""
+                                    },
+                                    enabled = publishTitle.trim().isNotBlank() && publishDesc.trim().isNotBlank(),
+                                    modifier = Modifier.fillMaxWidth(0.95f).align(Alignment.CenterHorizontally),
+                                    colors = ButtonDefaults.buttonColors(containerColor = accentStrong)
+                                ) { Text(stringResource(R.string.comm_publish_btn), color = Color.Black, fontWeight = FontWeight.Black) }
                                 Text(stringResource(R.string.comm_publish_hint), color = OnCardText.copy(alpha = 0.55f), fontSize = 12.sp)
                             } else {
                                 if (myPublishedPosts.isEmpty()) {
@@ -4521,7 +4688,6 @@ fun CommunityScreen(
                             OutlinedTextField(
                                 value = searchQuery,
                                 onValueChange = { searchQuery = it },
-                                enabled = false,
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp),
@@ -4550,20 +4716,17 @@ fun CommunityScreen(
                             ) {
                                 FilterChip(
                                     selected = communitySortMode == "latest",
-                                    onClick = { },
-                                    enabled = false,
+                                    onClick = { communitySortMode = "latest" },
                                     label = { Text(stringResource(R.string.sort_latest)) }
                                 )
                                 FilterChip(
                                     selected = communitySortMode == "popular",
-                                    onClick = { },
-                                    enabled = false,
+                                    onClick = { communitySortMode = "popular" },
                                     label = { Text(stringResource(R.string.sort_popular)) }
                                 )
                                 FilterChip(
                                     selected = communitySortMode == "top",
-                                    onClick = { },
-                                    enabled = false,
+                                    onClick = { communitySortMode = "top" },
                                     label = { Text(stringResource(R.string.sort_top)) }
                                 )
                             }
@@ -4586,25 +4749,22 @@ fun CommunityScreen(
                                             post = post,
                                             accentStrong = accentStrong,
                                             accentSoft = accentSoft,
-                                            isExpanded = expandedPostIds.contains(post.id),
+                                            isExpanded = false,
                                             isFollowing = followedAuthorIds.contains(post.authorId),
                                             isMuted = mutedAuthorIds.contains(post.authorId),
                                             isBlocked = blockedAuthorIds.contains(post.authorId),
                                             currentRating = myRatings[post.id] ?: 0,
-                                            interactionsEnabled = !communityLocked,
-                                            onToggleExpanded = {
-                                                expandedPostIds = if (expandedPostIds.contains(post.id)) {
-                                                    expandedPostIds - post.id
-                                                } else {
-                                                    expandedPostIds + post.id
-                                                }
-                                            },
+                                            interactionsEnabled = true,
+                                            onToggleExpanded = { selectedCommunityPostId = post.id },
                                             onToggleFollow = { onToggleFollow(post.authorId) },
                                             onToggleMute = { onToggleMute(post.authorId) },
                                             onToggleBlock = { onToggleBlock(post.authorId) },
                                             onReport = { onReport(post.authorId) },
                                             onRate = { onRate(post.id, it) },
-                                            onRemix = { onRemix(post) }
+                                            onRemix = { onRemix(post) },
+                                            comments = commentsByPost[post.id].orEmpty(),
+                                            onSubmitComment = { body -> onSubmitComment(post.id, body) },
+                                            onVoteComment = { commentId, vote -> onVoteComment(post.id, commentId, vote) }
                                         )
                                     }
                                 }
@@ -4690,15 +4850,53 @@ fun CommunityScreen(
                     }
                     Box(Modifier.fillMaxSize().graphicsLayer { translationX = tabOffset }) { renderTab(selectedTab) }
                 }
-                Text(
-                    "COMING SOON",
-                    color = OnCardText.copy(alpha = 0.26f),
-                    fontSize = 46.sp,
-                    fontWeight = FontWeight.Black,
+                }
+            }
+        }
+    }
+    if (selectedCommunityPost != null) {
+        Dialog(
+            onDismissRequest = { selectedCommunityPostId = null },
+            properties = DialogProperties(usePlatformDefaultWidth = false)
+        ) {
+            Surface(
+                color = CardDarkBlue,
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth(0.94f)
+                    .fillMaxHeight(0.88f)
+            ) {
+                Column(
                     modifier = Modifier
-                        .align(Alignment.Center)
-                        .graphicsLayer { rotationZ = -20f }
-                )
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    CommunityPostCard(
+                        post = selectedCommunityPost,
+                        accentStrong = accentStrong,
+                        accentSoft = accentSoft,
+                        isExpanded = true,
+                        isFollowing = followedAuthorIds.contains(selectedCommunityPost.authorId),
+                        isMuted = mutedAuthorIds.contains(selectedCommunityPost.authorId),
+                        isBlocked = blockedAuthorIds.contains(selectedCommunityPost.authorId),
+                        currentRating = myRatings[selectedCommunityPost.id] ?: 0,
+                        interactionsEnabled = true,
+                        onToggleExpanded = { },
+                        onToggleFollow = { onToggleFollow(selectedCommunityPost.authorId) },
+                        onToggleMute = { onToggleMute(selectedCommunityPost.authorId) },
+                        onToggleBlock = { onToggleBlock(selectedCommunityPost.authorId) },
+                        onReport = { onReport(selectedCommunityPost.authorId) },
+                        onRate = { onRate(selectedCommunityPost.id, it) },
+                        onRemix = { onRemix(selectedCommunityPost) },
+                        comments = commentsByPost[selectedCommunityPost.id].orEmpty(),
+                        onSubmitComment = { body -> onSubmitComment(selectedCommunityPost.id, body) },
+                        onVoteComment = { commentId, vote -> onVoteComment(selectedCommunityPost.id, commentId, vote) }
+                    )
+                    TextButton(onClick = { selectedCommunityPostId = null }, modifier = Modifier.align(Alignment.End)) {
+                        Text("Close", color = accentStrong)
+                    }
                 }
             }
         }
@@ -4722,7 +4920,10 @@ fun CommunityPostCard(
     onToggleBlock: () -> Unit,
     onReport: () -> Unit,
     onRate: (Int) -> Unit,
-    onRemix: () -> Unit
+    onRemix: () -> Unit,
+    comments: List<CommunityComment>,
+    onSubmitComment: (String) -> Unit,
+    onVoteComment: (String, Int) -> Unit
 ) {
     var showModerationMenu by remember { mutableStateOf(false) }
     val questCountLabel = "${post.template.dailyQuests.size} daily • ${post.template.mainQuests.size} main"
@@ -4816,6 +5017,19 @@ fun CommunityPostCard(
                             Text(
                                 "Add Template",
                                 color = readableTextColor(accentStrong),
+                                fontWeight = FontWeight.Black,
+                                fontSize = 10.sp
+                            )
+                        }
+                        Spacer(Modifier.width(4.dp))
+                        TextButton(
+                            onClick = onToggleFollow,
+                            enabled = interactionsEnabled,
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                if (isFollowing) "Following" else "Follow",
+                                color = if (isFollowing) accentSoft else accentStrong,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 10.sp
                             )
@@ -4967,6 +5181,68 @@ fun CommunityPostCard(
                             fontWeight = FontWeight.Black,
                             fontSize = 13.sp
                         )
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                var commentDraft by remember(post.id) { mutableStateOf("") }
+                OutlinedTextField(
+                    value = commentDraft,
+                    onValueChange = { commentDraft = it.take(500) },
+                    enabled = interactionsEnabled,
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    placeholder = { Text("Add a comment...", color = OnCardText.copy(alpha = 0.5f)) },
+                    trailingIcon = {
+                        TextButton(
+                            onClick = {
+                                val payload = commentDraft.trim()
+                                if (payload.length >= 2) {
+                                    onSubmitComment(payload)
+                                    commentDraft = ""
+                                }
+                            },
+                            enabled = interactionsEnabled && commentDraft.trim().length >= 2
+                        ) { Text("Post", color = accentStrong) }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = OnCardText,
+                        unfocusedTextColor = OnCardText,
+                        cursorColor = accentStrong
+                    )
+                )
+                if (comments.isNotEmpty()) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+                        comments.takeLast(6).forEach { c ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.Black.copy(alpha = 0.16f))
+                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(c.authorName, color = OnCardText.copy(alpha = 0.78f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    Text(c.body, color = OnCardText.copy(alpha = 0.88f), fontSize = 12.sp)
+                                }
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        Icons.Default.ThumbUp,
+                                        null,
+                                        tint = if (c.myVote > 0) accentStrong else OnCardText.copy(alpha = 0.55f),
+                                        modifier = Modifier.size(16.dp).clickable(enabled = interactionsEnabled) { onVoteComment(c.id, if (c.myVote > 0) 0 else 1) }
+                                    )
+                                    Text("${c.upVotes}", color = OnCardText.copy(alpha = 0.66f), fontSize = 10.sp, modifier = Modifier.padding(horizontal = 4.dp))
+                                    Icon(
+                                        Icons.Default.ThumbDown,
+                                        null,
+                                        tint = if (c.myVote < 0) Color(0xFFE57373) else OnCardText.copy(alpha = 0.55f),
+                                        modifier = Modifier.size(16.dp).clickable(enabled = interactionsEnabled) { onVoteComment(c.id, if (c.myVote < 0) 0 else -1) }
+                                    )
+                                    Text("${c.downVotes}", color = OnCardText.copy(alpha = 0.66f), fontSize = 10.sp, modifier = Modifier.padding(start = 4.dp))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -5847,6 +6123,9 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
     var xp by remember { mutableIntStateOf(initial?.xp ?: 20) }
     var target by remember { mutableIntStateOf(initial?.target ?: 1) }
     var isPinned by remember { mutableStateOf(initial?.isPinned ?: false) }
+    var objectiveType by remember { mutableStateOf(initial?.objectiveType ?: QuestObjectiveType.COUNT) }
+    var timerMinutes by remember { mutableIntStateOf(((initial?.targetSeconds ?: 300) / 60).coerceIn(1, 360)) }
+    var healthMetric by remember { mutableStateOf(initial?.healthMetric ?: "steps") }
 
     // NEW: Image Picker Logic
     var imageUri by remember { mutableStateOf(initial?.imageUri) }
@@ -5872,7 +6151,8 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                     value = title,
                     onValueChange = { title = it },
                     label = { Text("Quest name") },
-                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = OnCardText,
                         unfocusedTextColor = OnCardText,
@@ -5907,7 +6187,7 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                             onValueChange = { icon = it.take(4) },
                             label = { Text("Icon fallback") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = OnCardText,
                                 unfocusedTextColor = OnCardText,
@@ -5930,25 +6210,62 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
 
                 Column(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SubtlePanel.copy(alpha = 0.6f))
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text("Target Count: $target", color = OnCardText, fontSize = 12.sp)
-                    Slider(
-                        value = target.toFloat(),
-                        onValueChange = { target = it.toInt() },
-                        valueRange = 1f..10f,
-                        steps = 8,
-                        colors = SliderDefaults.colors(thumbColor = accentStrong, activeTrackColor = accentStrong)
+                    Text("Objective", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    val objectiveTypes = listOf(QuestObjectiveType.COUNT, QuestObjectiveType.TIMER, QuestObjectiveType.HEALTH)
+                    val objectiveIndex = objectiveTypes.indexOf(objectiveType).coerceAtLeast(0)
+                    SettingsSelectorRow(
+                        title = "",
+                        valueLabel = when (objectiveType) {
+                            QuestObjectiveType.COUNT -> "Count"
+                            QuestObjectiveType.TIMER -> "Timer"
+                            QuestObjectiveType.HEALTH -> "Health"
+                        },
+                        onPrev = { objectiveType = objectiveTypes[(objectiveIndex - 1).coerceAtLeast(0)] },
+                        onNext = { objectiveType = objectiveTypes[(objectiveIndex + 1).coerceAtMost(objectiveTypes.lastIndex)] }
                     )
-                    Text(
-                        if (target == 1) "Standard quest" else "Counter quest (e.g. 8 cups)",
-                        color = OnCardText.copy(alpha = 0.58f),
-                        fontSize = 10.sp
-                    )
+                    if (objectiveType == QuestObjectiveType.TIMER) {
+                        Text("Timer Duration", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        SettingsSelectorRow(
+                            title = "",
+                            valueLabel = "${timerMinutes}m",
+                            onPrev = { timerMinutes = (timerMinutes - 1).coerceAtLeast(1) },
+                            onNext = { timerMinutes = (timerMinutes + 1).coerceAtMost(360) }
+                        )
+                        Text("Quest completes after timer duration.", color = OnCardText.copy(alpha = 0.58f), fontSize = 10.sp)
+                    } else if (objectiveType == QuestObjectiveType.HEALTH) {
+                        val metrics = listOf("steps", "heart_rate", "distance_m", "calories_kcal")
+                        val metricIndex = metrics.indexOf(healthMetric).coerceAtLeast(0)
+                        Text("Health Metric", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        SettingsSelectorRow(
+                            title = "",
+                            valueLabel = when (healthMetric) {
+                                "steps" -> "Steps"
+                                "heart_rate" -> "Heart Rate"
+                                "distance_m" -> "Distance"
+                                "calories_kcal" -> "Calories"
+                                else -> "Steps"
+                            },
+                            onPrev = { healthMetric = metrics[(metricIndex - 1).coerceAtLeast(0)] },
+                            onNext = { healthMetric = metrics[(metricIndex + 1).coerceAtMost(metrics.lastIndex)] }
+                        )
+                        Text("Health quests sync progress from Health Connect.", color = OnCardText.copy(alpha = 0.58f), fontSize = 10.sp)
+                    } else {
+                        Text("Count", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                        SettingsSelectorRow(
+                            title = "",
+                            valueLabel = "$target",
+                            onPrev = { target = (target - 1).coerceAtLeast(1) },
+                            onNext = { target = (target + 1).coerceAtMost(10) }
+                        )
+                        Text(
+                            if (target == 1) "Count = complete once" else "Count = complete this many times",
+                            color = OnCardText.copy(alpha = 0.58f),
+                            fontSize = 10.sp
+                        )
+                    }
                 }
 
                 Row(
@@ -5956,7 +6273,7 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
-                        .background(SubtlePanel.copy(alpha = 0.45f))
+                        .border(1.dp, OnCardText.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
                         .clickable { isPinned = !isPinned }
                         .padding(horizontal = 8.dp, vertical = 6.dp)
                 ) {
@@ -5967,38 +6284,32 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SubtlePanel.copy(alpha = 0.45f))
-                        .padding(10.dp),
+                        .padding(top = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Difficulty tier", color = OnCardText, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { difficulty = (difficulty - 1).coerceAtLeast(1) }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = accentStrong)
-                        }
-                        Text("Tier $difficulty", color = accentStrong, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        IconButton(onClick = { difficulty = (difficulty + 1).coerceAtMost(5) }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = accentStrong)
-                        }
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("XP reward", color = OnCardText, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { xp = (xp - 5).coerceAtLeast(5) }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = accentStrong)
-                        }
-                        Text("$xp XP", color = accentStrong, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        IconButton(onClick = { xp = (xp + 5).coerceAtMost(500) }) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowForward, null, tint = accentStrong)
-                        }
-                    }
+                    Text("Difficulty tier", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    SettingsSelectorRow(
+                        title = "",
+                        valueLabel = "Tier $difficulty",
+                        onPrev = { difficulty = (difficulty - 1).coerceAtLeast(1) },
+                        onNext = { difficulty = (difficulty + 1).coerceAtMost(5) }
+                    )
+                    Text("XP reward", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    SettingsSelectorRow(
+                        title = "",
+                        valueLabel = "$xp XP",
+                        onPrev = { xp = (xp - 5).coerceAtLeast(5) },
+                        onNext = { xp = (xp + 5).coerceAtMost(500) }
+                    )
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = {
-                // FIXED: If target is 1 (Standard), save it as 2 to enable "Start -> Done -> Claim" flow.
-                val safeTarget = if (target == 1) 2 else target
+                val safeTarget = when (objectiveType) {
+                    QuestObjectiveType.TIMER -> (timerMinutes * 60).coerceIn(30, 24 * 60 * 60)
+                    else -> target.coerceAtLeast(1)
+                }
 
                 onSave(CustomTemplate(
                     id = initial?.id ?: UUID.randomUUID().toString(),
@@ -6007,9 +6318,13 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                     title = title.trim(),
                     icon = icon.trim(),
                     xp = xp,
-                    target = safeTarget, // Use the fixed target
+                    target = safeTarget,
                     isPinned = isPinned,
-                    imageUri = imageUri
+                    imageUri = imageUri,
+                    objectiveType = objectiveType,
+                    targetSeconds = if (objectiveType == QuestObjectiveType.TIMER) safeTarget else null,
+                    healthMetric = if (objectiveType == QuestObjectiveType.HEALTH) healthMetric else null,
+                    healthAggregation = if (objectiveType == QuestObjectiveType.HEALTH) "daily_total" else null
                 ))
             }) {
                 Text("Save", color = accentStrong)
@@ -6686,13 +7001,19 @@ private fun SettingsSelectorRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(
-            title,
-            color = if (enabled) OnCardText else OnCardText.copy(alpha = 0.5f),
-            modifier = Modifier.weight(1f),
-            fontSize = 13.sp,
-            fontWeight = FontWeight.SemiBold
-        )
+        if (title.isNotBlank()) {
+            Text(
+                title,
+                color = if (enabled) OnCardText else OnCardText.copy(alpha = 0.5f),
+                modifier = Modifier.weight(1f),
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        } else {
+            Spacer(Modifier.weight(1f))
+        }
         Row(
             modifier = Modifier
                 .widthIn(min = 170.dp, max = 228.dp)
@@ -6814,8 +7135,8 @@ fun SettingRow(title: String, value: Boolean, onChange: (Boolean) -> Unit, enabl
         title = title,
         valueLabel = if (value) "On" else "Off",
         enabled = enabled,
-        onPrev = { if (value) onChange(false) },
-        onNext = { if (!value) onChange(true) },
+        onPrev = { onChange(!value) },
+        onNext = { onChange(!value) },
         onRowClick = { onChange(!value) }
     )
 }
@@ -6897,11 +7218,30 @@ fun QuestCard(
     uiScale: Float = 1f,
     alwaysShowProgress: Boolean = false
 ) {
-    val target = quest.target
+    val isTimerQuest = quest.objectiveType == QuestObjectiveType.TIMER
+    val isHealthQuest = quest.objectiveType == QuestObjectiveType.HEALTH
+    val target = if (isTimerQuest) {
+        (quest.targetSeconds ?: quest.target).coerceAtLeast(1)
+    } else {
+        quest.target
+    }
     val current = quest.currentProgress
     val displayProgress = current.coerceAtMost(target)
+    var timerRunning by rememberSaveable(quest.id) { mutableStateOf(false) }
 
-    // State: 0=Start, 1=Active, 2=Claim, 3=Completed
+    LaunchedEffect(timerRunning, quest.id, quest.completed, current, target, isTimerQuest) {
+        if (!isTimerQuest || !timerRunning || quest.completed) return@LaunchedEffect
+        while (timerRunning && !quest.completed) {
+            delay(1000)
+            val latest = (current + 1).coerceAtMost(target + 1)
+            onProgress(latest)
+            if (latest >= target) {
+                timerRunning = false
+                break
+            }
+        }
+    }
+
     val phase = when {
         quest.completed -> 3
         current > target -> 2
@@ -6919,7 +7259,6 @@ fun QuestCard(
     val neonQuestBorderActive = neonBordersEnabled
     val neonQuestBorderBrush = if (neonQuestBorderActive) rememberNeonBorderBrush(accentStrong, neonSecondary) else null
 
-    // Restore breathing feedback for actionable quest states (DONE/CLAIM).
     val pulseTransition = if (ThemeRuntime.reduceAnimationsEnabled) null else rememberInfiniteTransition(label = "quest_pulse")
     val pulseMinAlpha = if (isClaiming) 0.52f else 0.76f
     val pulseAlpha = pulseTransition?.animateFloat(
@@ -6976,6 +7315,18 @@ fun QuestCard(
     } else 0.dp
     val questCardShape = RoundedCornerShape(16.dp * uiScale)
 
+    val progressLabel = if (isTimerQuest) {
+        val sec = displayProgress.coerceAtLeast(0)
+        val tgt = target.coerceAtLeast(1)
+        val curM = sec / 60
+        val curS = sec % 60
+        val tgtM = tgt / 60
+        val tgtS = tgt % 60
+        String.format(Locale.getDefault(), "%02d:%02d/%02d:%02d", curM, curS, tgtM, tgtS)
+    } else {
+        "$displayProgress/$target"
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -7001,7 +7352,6 @@ fun QuestCard(
                 .fillMaxWidth()
                 .padding(12.dp * uiScale)
         ) {
-            // 1. Icon / Image
             Box(
                 modifier = Modifier
                     .size((42.dp * uiScale).coerceAtLeast(36.dp))
@@ -7018,7 +7368,6 @@ fun QuestCard(
 
             Spacer(Modifier.width(12.dp * uiScale))
 
-            // 2. Text Info
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = quest.title,
@@ -7035,16 +7384,40 @@ fun QuestCard(
                         else -> OnCardText.copy(alpha = 0.9f)
                     }
                     Text(text = "${quest.xpReward} XP", color = xpColor, fontSize = (11f * uiScale).sp, fontWeight = FontWeight.ExtraBold)
-                    if (!isDone && (target != 2 || alwaysShowProgress)) {
+                    if (!isDone && (target != 2 || alwaysShowProgress || isTimerQuest)) {
                         Spacer(Modifier.width(8.dp))
-                        Text("$displayProgress/$target", color = OnCardText.copy(alpha = 0.6f), fontSize = (10f * uiScale).sp)
+                        Text(progressLabel, color = OnCardText.copy(alpha = 0.6f), fontSize = (10f * uiScale).sp)
+                        if (isHealthQuest && !quest.healthMetric.isNullOrBlank()) {
+                            Spacer(Modifier.width(6.dp))
+                            Text(quest.healthMetric!!, color = OnCardText.copy(alpha = 0.5f), fontSize = (9f * uiScale).sp)
+                        }
                     }
                 }
             }
 
-            // 3. Main Action Button / Done Watermark Slot
             if (!isDone) {
-                if (phase == 1 && !isReadyToConfirmDone && !isClaiming) {
+                if (isTimerQuest && !isClaiming) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        SmallActionPill(
+                            text = if (timerRunning) "PAUSE" else if (current <= 0) "START" else "RESUME",
+                            enabled = true,
+                            accentSoft = if (timerRunning) accentSoft else accentStrong,
+                            onClick = {
+                                timerRunning = !timerRunning
+                                if (!timerRunning && current <= 0) onProgress(1)
+                            }
+                        )
+                        SmallActionPill(
+                            text = "RESET",
+                            enabled = current > 0,
+                            accentSoft = accentSoft,
+                            onClick = {
+                                timerRunning = false
+                                onProgress(0)
+                            }
+                        )
+                    }
+                } else if (!isHealthQuest && phase == 1 && !isReadyToConfirmDone && !isClaiming) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         SmallActionPill(
                             text = "-",
@@ -7086,6 +7459,9 @@ fun QuestCard(
                                     onClaimQuest()
                                 } else if (isReadyToConfirmDone) {
                                     onProgress(target + 1)
+                                } else if (isHealthQuest) {
+                                    // Health quests progress from synced metric snapshot.
+                                    onProgress(current)
                                 } else {
                                     onProgress((current + 1).coerceAtMost(target))
                                 }
@@ -7124,6 +7500,7 @@ fun QuestCard(
         }
     }
 }
+
 
 @Composable
 fun SmallActionPill(
@@ -7562,6 +7939,8 @@ fun DashboardScreen(
     streak: Int,
     history: Map<Long, HistoryEntry>,
     unlockedAchievementIds: Set<String>,
+    healthSnapshot: HealthDailySnapshot?,
+    onSaveHealthSnapshot: (HealthDailySnapshot) -> Unit,
     accentStrong: Color,
     accentSoft: Color,
     onOpenDrawer: () -> Unit,
@@ -7606,6 +7985,37 @@ fun DashboardScreen(
             (e.done.toFloat() / e.total.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f)
         }
     }
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val healthPermissions = remember {
+        setOf(
+            HealthPermission.getReadPermission(StepsRecord::class),
+            HealthPermission.getReadPermission(HeartRateRecord::class),
+            HealthPermission.getReadPermission(DistanceRecord::class),
+            HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
+        )
+    }
+    var healthSyncStatus by remember { mutableStateOf<String?>(null) }
+    fun runHealthConnectSync() {
+        scope.launch {
+            runCatching {
+                val snapshot = HealthConnectReader.readTodaySnapshot(context)
+                onSaveHealthSnapshot(snapshot)
+                healthSyncStatus = "Health Connect synced"
+            }.onFailure {
+                healthSyncStatus = "Health Connect sync failed"
+            }
+        }
+    }
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { granted ->
+        if (granted.containsAll(healthPermissions)) {
+            runHealthConnectSync()
+        } else {
+            healthSyncStatus = "Health permission denied"
+        }
+    }
 
     ScalableScreen(modifier) { uiScale ->
         Column(verticalArrangement = Arrangement.spacedBy((12.dp * uiScale))) {
@@ -7631,7 +8041,97 @@ fun DashboardScreen(
                     }
                 }
 
-                // 2. Lifetime Stats
+                // 2. Health Snapshot
+                CardBlock {
+                    Text("HEALTH SNAPSHOT", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Spacer(Modifier.height(6.dp))
+                    val today = healthSnapshot
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StatTile(Icons.Default.DirectionsWalk, "Steps", "${today?.steps ?: 0}", Color(0xFF66BB6A), Modifier.weight(1f))
+                        StatTile(Icons.Default.Favorite, "Heart", "${today?.avgHeartRate ?: 0}", Color(0xFFEF5350), Modifier.weight(1f))
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        StatTile(Icons.Default.Timeline, "Distance", "${(today?.distanceMeters ?: 0f).toInt()}m", Color(0xFF42A5F5), Modifier.weight(1f))
+                        StatTile(Icons.Default.LocalFireDepartment, "Calories", "${(today?.caloriesKcal ?: 0f).toInt()}", Color(0xFFFFA726), Modifier.weight(1f))
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    var showManual by remember { mutableStateOf(false) }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+                        OutlinedButton(onClick = { showManual = true }, modifier = Modifier.weight(1f)) { Text("Manual Update") }
+                        OutlinedButton(
+                            onClick = {
+                                when (HealthConnectReader.sdkStatus(context)) {
+                                    HealthConnectReader.STATUS_AVAILABLE -> {
+                                        scope.launch {
+                                            val hcClient = androidx.health.connect.client.HealthConnectClient.getOrCreate(context)
+                                            val granted = hcClient.permissionController.getGrantedPermissions()
+                                            if (granted.containsAll(healthPermissions)) {
+                                                runHealthConnectSync()
+                                            } else {
+                                                healthPermissionLauncher.launch(healthPermissions)
+                                            }
+                                        }
+                                    }
+                                    HealthConnectReader.STATUS_NEEDS_INSTALL -> {
+                                        healthSyncStatus = "Install or update Health Connect"
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent(
+                                                    Intent.ACTION_VIEW,
+                                                    "market://details?id=com.google.android.apps.healthdata".toUri()
+                                                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                            )
+                                        }
+                                    }
+                                    else -> {
+                                        healthSyncStatus = "Health Connect not supported on this device"
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) { Text("Sync Health") }
+                    }
+                    if (!healthSyncStatus.isNullOrBlank()) {
+                        Text(healthSyncStatus.orEmpty(), color = OnCardText.copy(alpha = 0.68f), fontSize = 11.sp)
+                    }
+                    if (showManual) {
+                        var steps by remember { mutableStateOf((today?.steps ?: 0).toString()) }
+                        var hr by remember { mutableStateOf((today?.avgHeartRate ?: 0).toString()) }
+                        var dist by remember { mutableStateOf(((today?.distanceMeters ?: 0f).toInt()).toString()) }
+                        var cal by remember { mutableStateOf(((today?.caloriesKcal ?: 0f).toInt()).toString()) }
+                        AlertDialog(
+                            onDismissRequest = { showManual = false },
+                            containerColor = CardDarkBlue,
+                            title = { Text("Manual Health Update", color = OnCardText) },
+                            text = {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(steps, { if (it.all(Char::isDigit)) steps = it }, label = { Text("Steps") }, singleLine = true)
+                                    OutlinedTextField(hr, { if (it.all(Char::isDigit)) hr = it }, label = { Text("Avg Heart Rate") }, singleLine = true)
+                                    OutlinedTextField(dist, { if (it.all(Char::isDigit)) dist = it }, label = { Text("Distance (m)") }, singleLine = true)
+                                    OutlinedTextField(cal, { if (it.all(Char::isDigit)) cal = it }, label = { Text("Calories") }, singleLine = true)
+                                }
+                            },
+                            confirmButton = {
+                                TextButton(onClick = {
+                                    onSaveHealthSnapshot(
+                                        HealthDailySnapshot(
+                                            epochDay = epochDayNow(),
+                                            steps = steps.toIntOrNull() ?: 0,
+                                            avgHeartRate = (hr.toIntOrNull() ?: 0).takeIf { it > 0 },
+                                            distanceMeters = (dist.toIntOrNull() ?: 0).toFloat(),
+                                            caloriesKcal = (cal.toIntOrNull() ?: 0).toFloat(),
+                                            source = "manual"
+                                        )
+                                    )
+                                    showManual = false
+                                }) { Text("Save", color = accentStrong) }
+                            },
+                            dismissButton = { TextButton(onClick = { showManual = false }) { Text("Cancel", color = OnCardText) } }
+                        )
+                    }
+                }
+
+                // 3. Lifetime Stats
                 CardBlock {
                     Text("LIFETIME STATS", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(4.dp))
@@ -7677,20 +8177,17 @@ fun DashboardScreen(
                 CardBlock {
                     Text("7-DAY TREND", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(8.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.Bottom, modifier = Modifier.fillMaxWidth().height(80.dp)) {
-                        if (trendPoints.isEmpty()) {
-                            Text("No trend data yet.", color = OnCardText.copy(alpha = 0.6f), fontSize = 12.sp)
-                        } else {
-                            trendPoints.forEach { ratio ->
-                                Box(
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .fillMaxHeight(ratio.coerceAtLeast(0.08f))
-                                        .clip(RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp))
-                                        .background(accentStrong.copy(alpha = 0.35f + ratio * 0.55f))
-                                )
-                            }
-                        }
+                    if (trendPoints.isEmpty()) {
+                        Text("No trend data yet.", color = OnCardText.copy(alpha = 0.6f), fontSize = 12.sp)
+                    } else {
+                        TrendLineChart(
+                            points = trendPoints,
+                            accentStrong = accentStrong,
+                            accentSoft = accentSoft,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(110.dp)
+                        )
                     }
                     Spacer(Modifier.height(10.dp))
                     Text("30-DAY HEATMAP", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
@@ -7753,6 +8250,52 @@ fun StatTile(icon: ImageVector, label: String, value: String, color: Color, modi
         Icon(icon, null, tint = color, modifier = Modifier.size(15.dp))
         Text(label, fontSize = 11.sp, color = OnCardText.copy(alpha = 0.76f), maxLines = 1, modifier = Modifier.weight(1f))
         Text(value, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = OnCardText, maxLines = 1)
+    }
+}
+
+@Composable
+fun TrendLineChart(
+    points: List<Float>,
+    accentStrong: Color,
+    accentSoft: Color,
+    modifier: Modifier = Modifier
+) {
+    val safe = points.map { it.coerceIn(0f, 1f) }
+    val lineColor = accentStrong.copy(alpha = 0.95f)
+    val fillColor = accentSoft.copy(alpha = 0.20f)
+    Canvas(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Black.copy(alpha = 0.12f))
+            .border(1.dp, accentSoft.copy(alpha = 0.28f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 10.dp, vertical = 10.dp)
+    ) {
+        if (safe.isEmpty()) return@Canvas
+        val stepX = if (safe.size <= 1) 0f else size.width / (safe.size - 1).toFloat()
+        val pointsPath = Path()
+        val fillPath = Path()
+        safe.forEachIndexed { i, v ->
+            val x = i * stepX
+            val y = size.height - (v * size.height)
+            if (i == 0) {
+                pointsPath.moveTo(x, y)
+                fillPath.moveTo(x, size.height)
+                fillPath.lineTo(x, y)
+            } else {
+                pointsPath.lineTo(x, y)
+                fillPath.lineTo(x, y)
+            }
+        }
+        fillPath.lineTo(size.width, size.height)
+        fillPath.close()
+
+        drawPath(path = fillPath, color = fillColor)
+        drawPath(path = pointsPath, color = lineColor, style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+        safe.forEachIndexed { i, v ->
+            val x = i * stepX
+            val y = size.height - (v * size.height)
+            drawCircle(color = lineColor, radius = 5f, center = Offset(x, y))
+        }
     }
 }
 

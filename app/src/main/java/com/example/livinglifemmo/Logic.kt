@@ -217,7 +217,7 @@ fun canAddToInventory(currentInventory: List<InventoryItem>): Boolean {
 fun customTemplatesToQuestTemplates(customs: List<CustomTemplate>): List<QuestTemplate> {
     return customs.map {
         // Now passing the packageId correctly!
-        QuestTemplate(it.category, it.difficulty, it.title, it.icon, it.xp, it.target, it.isPinned, it.imageUri, it.packageId)
+        QuestTemplate(it.category, it.difficulty, it.title, it.icon, it.xp, it.target, it.isPinned, it.imageUri, it.packageId, it.objectiveType, it.targetSeconds, it.healthMetric, it.healthAggregation)
     }
 }
 fun difficultyCapForLevel(level: Int): Int = when { level <= 2 -> 1; level <= 5 -> 2; level <= 10 -> 3; level <= 20 -> 4; else -> 5 }
@@ -253,7 +253,12 @@ fun generateDailyQuests(seed: Long, playerLevel: Int, pool: List<QuestTemplate>,
             difficulty = t.difficulty,
             category = t.category,
             target = t.target,
-            imageUri = t.imageUri // NEW: Pass the image
+            imageUri = t.imageUri,
+            packageId = t.packageId,
+            objectiveType = t.objectiveType,
+            targetSeconds = t.targetSeconds,
+            healthMetric = t.healthMetric,
+            healthAggregation = t.healthAggregation
         )
     }
 }
@@ -294,7 +299,7 @@ fun refreshKeepingCompleted(
         val finalPool = if (candidates.isNotEmpty()) candidates else catPool
 
         val t = finalPool[rng.nextInt(finalPool.size)]
-        Quest(stableQuestId(cat, t), t.title, t.xp, t.icon, t.category, t.difficulty, t.target, 0, false, t.imageUri)
+        Quest(stableQuestId(cat, t), t.title, t.xp, t.icon, t.category, t.difficulty, t.target, 0, false, t.imageUri, t.packageId, t.objectiveType, t.targetSeconds, t.healthMetric, t.healthAggregation)
     }
 
     val targetCount = desiredCount.coerceIn(3, 10)
@@ -314,7 +319,12 @@ fun refreshKeepingCompleted(
             target = template.target,
             currentProgress = 0,
             completed = false,
-            imageUri = template.imageUri
+            imageUri = template.imageUri,
+            packageId = template.packageId,
+            objectiveType = template.objectiveType,
+            targetSeconds = template.targetSeconds,
+            healthMetric = template.healthMetric,
+            healthAggregation = template.healthAggregation
         )
         if (usedIds.add(quest.id)) {
             seeded += quest
@@ -635,7 +645,7 @@ fun getEmptyStarterTemplate(lang: String = "en"): GameTemplate {
         appTheme = AppTheme.DEFAULT,
         dailyQuests = emptyList(),
         mainQuests = emptyList(),
-        shopItems = getDefaultShopItems(lang),
+        shopItems = emptyList(),
         packageId = pkg,
         templateSettings = TemplateSettings()
     )

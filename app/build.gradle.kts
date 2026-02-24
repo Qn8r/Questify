@@ -81,6 +81,7 @@ dependencies {
     implementation(libs.google.gson)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.google.play.services.auth)
+    implementation(libs.androidx.health.connect.client)
 
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

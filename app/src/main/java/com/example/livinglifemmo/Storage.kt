@@ -140,7 +140,9 @@ object Keys {
     val JOURNAL_ACCENT_COLOR_ARGB = intPreferencesKey("journal_accent_color_argb")
     val JOURNAL_NAME = stringPreferencesKey("journal_name")
     val APP_LANGUAGE = stringPreferencesKey("app_language")
+    val HEALTH_DAILY_SNAPSHOT = stringPreferencesKey("health_daily_snapshot")
 }
+
 
 const val CURRENT_DATA_VERSION = 6
 private const val MAX_TEMPLATE_PAYLOAD_CHARS = 250_000
@@ -184,8 +186,11 @@ fun serializeQuests(list: List<Quest>): String {
     return list.joinToString(";;") { q ->
         val safeTitle = q.title.replace("|", " ").replace(";;", " ")
         val safeUri = q.imageUri ?: ""
-        // Added |$safeUri at the end
-        "${q.id}|${q.category.name}|${q.difficulty}|${q.xpReward}|${q.icon}|$safeTitle|${q.target}|${q.currentProgress}|$safeUri"
+        val safeObjective = q.objectiveType.name
+        val safeTargetSeconds = q.targetSeconds ?: 0
+        val safeHealthMetric = q.healthMetric.orEmpty().replace("|", " ").replace(";;", " ")
+        val safeHealthAggregation = q.healthAggregation.orEmpty().replace("|", " ").replace(";;", " ")
+        "${q.id}|${q.category.name}|${q.difficulty}|${q.xpReward}|${q.icon}|$safeTitle|${q.target}|${q.currentProgress}|$safeUri|$safeObjective|$safeTargetSeconds|$safeHealthMetric|$safeHealthAggregation"
     }
 }
 
@@ -203,8 +208,12 @@ fun deserializeQuests(serialized: String): List<Quest> {
         val target = if (bits.size > 6) bits[6].toIntOrNull() ?: 1 else 1
         val progress = if (bits.size > 7) bits[7].toIntOrNull() ?: 0 else 0
         val imageUri = if (bits.size > 8 && bits[8].isNotBlank()) bits[8] else null
+        val objectiveType = if (bits.size > 9) runCatching { QuestObjectiveType.valueOf(bits[9]) }.getOrDefault(QuestObjectiveType.COUNT) else QuestObjectiveType.COUNT
+        val targetSeconds = if (bits.size > 10) (bits[10].toIntOrNull() ?: 0).takeIf { it > 0 } else null
+        val healthMetric = if (bits.size > 11 && bits[11].isNotBlank()) bits[11] else null
+        val healthAggregation = if (bits.size > 12 && bits[12].isNotBlank()) bits[12] else null
 
-        Quest(id, title, xp, icon, cat, diff, target, progress, false, imageUri)
+        Quest(id, title, xp, icon, cat, diff, target, progress, false, imageUri, "user_created", objectiveType, targetSeconds, healthMetric, healthAggregation)
     }
 }
 
@@ -241,8 +250,11 @@ fun serializeCustomTemplates(list: List<CustomTemplate>): String {
         val safeTitle = t.title.replace("|", " ").replace(";;", " ")
         val safeIcon = t.icon.replace("|", " ").replace(";;", " ")
         val safeUri = t.imageUri ?: ""
-        // Added |${if(t.isActive) 1 else 0} at the end
-        "${t.id}|${t.category.name}|${t.difficulty}|${t.xp}|$safeIcon|$safeTitle|${if(t.isPinned) 1 else 0}|${t.target}|$safeUri|${t.packageId}|${if(t.isActive) 1 else 0}"
+        val safeObjective = t.objectiveType.name
+        val safeTargetSeconds = t.targetSeconds ?: 0
+        val safeHealthMetric = t.healthMetric.orEmpty().replace("|", " ").replace(";;", " ")
+        val safeHealthAggregation = t.healthAggregation.orEmpty().replace("|", " ").replace(";;", " ")
+        "${t.id}|${t.category.name}|${t.difficulty}|${t.xp}|$safeIcon|$safeTitle|${if(t.isPinned) 1 else 0}|${t.target}|$safeUri|${t.packageId}|${if(t.isActive) 1 else 0}|$safeObjective|$safeTargetSeconds|$safeHealthMetric|$safeHealthAggregation"
     }
 }
 
@@ -261,10 +273,13 @@ fun deserializeCustomTemplates(serialized: String): List<CustomTemplate> {
         val target = if (bits.size > 7) bits[7].toIntOrNull() ?: 1 else 1
         val imageUri = if (bits.size > 8 && bits[8].isNotBlank()) bits[8] else null
         val packageId = if (bits.size > 9 && bits[9].isNotBlank()) bits[9] else "user_created"
-        // NEW: Read isActive
         val isActive = if (bits.size > 10) (bits[10].toIntOrNull() ?: 1) == 1 else true
+        val objectiveType = if (bits.size > 11) runCatching { QuestObjectiveType.valueOf(bits[11]) }.getOrDefault(QuestObjectiveType.COUNT) else QuestObjectiveType.COUNT
+        val targetSeconds = if (bits.size > 12) (bits[12].toIntOrNull() ?: 0).takeIf { it > 0 } else null
+        val healthMetric = if (bits.size > 13 && bits[13].isNotBlank()) bits[13] else null
+        val healthAggregation = if (bits.size > 14 && bits[14].isNotBlank()) bits[14] else null
 
-        CustomTemplate(id, cat, diff, title, icon, xp, target, isPinned, imageUri, packageId, isActive)
+        CustomTemplate(id, cat, diff, title, icon, xp, target, isPinned, imageUri, packageId, isActive, objectiveType, targetSeconds, healthMetric, healthAggregation)
     }
 }
 fun serializeMainQuests(list: List<CustomMainQuest>): String {
@@ -493,6 +508,10 @@ fun exportGameTemplate(template: GameTemplate): String {
 
 private fun sanitizeQuestTemplate(q: QuestTemplate, fallbackPackageId: String): QuestTemplate {
     val safePackage = q.packageId.ifBlank { fallbackPackageId }
+    val objectiveType = q.objectiveType
+    val safeTargetSeconds = q.targetSeconds?.coerceIn(30, 24 * 60 * 60)
+    val safeHealthMetric = q.healthMetric?.trim()?.take(32)?.takeIf { it.isNotBlank() }
+    val safeHealthAggregation = q.healthAggregation?.trim()?.take(32)?.takeIf { it.isNotBlank() }
     return q.copy(
         difficulty = q.difficulty.coerceIn(1, 5),
         title = q.title.trim().take(64).ifBlank { "Untitled Quest" },
@@ -500,7 +519,11 @@ private fun sanitizeQuestTemplate(q: QuestTemplate, fallbackPackageId: String): 
         xp = q.xp.coerceIn(1, 5000),
         target = q.target.coerceIn(1, 500),
         imageUri = q.imageUri?.takeIf { it.isNotBlank() },
-        packageId = safePackage
+        packageId = safePackage,
+        objectiveType = objectiveType,
+        targetSeconds = safeTargetSeconds,
+        healthMetric = safeHealthMetric,
+        healthAggregation = safeHealthAggregation
     )
 }
 

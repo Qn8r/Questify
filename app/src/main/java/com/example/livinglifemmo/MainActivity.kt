@@ -316,6 +316,8 @@ fun AppRoot(appContext: Context) {
     var cloudLastSyncAt by remember { mutableLongStateOf(0L) }
     var cloudLastAutoAttemptAt by remember { mutableLongStateOf(0L) }
     var communityPosts by remember { mutableStateOf<List<CommunityPost>>(emptyList()) }
+    var communityCommentsByPost by remember { mutableStateOf<Map<String, List<CommunityComment>>>(emptyMap()) }
+    var myCommunityCommentVotes by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
     var followedAuthorIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var mutedAuthorIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var blockedAuthorIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -340,6 +342,7 @@ fun AppRoot(appContext: Context) {
     var backupImportPayload by remember { mutableStateOf("") }
     var remixPostPending by remember { mutableStateOf<CommunityPost?>(null) }
     var schemaDowngradeDetected by remember { mutableStateOf(false) }
+    var healthDailySnapshot by remember { mutableStateOf<HealthDailySnapshot?>(null) }
     // --- Persistence Functions ---
     var activePackageIds by remember { mutableStateOf(setOf(REAL_DAILY_LIFE_PACKAGE_ID)) } // NEW
     val activePacksKey = stringPreferencesKey("active_packs") // NEW
@@ -423,7 +426,7 @@ fun AppRoot(appContext: Context) {
         neonLightBoost = settings.neonLightBoost
         neonFlowEnabled = neonEnabledFromTemplate
         neonFlowSpeed = settings.neonFlowSpeed.coerceIn(0, 2)
-        neonGlowPalette = settings.neonGlowPalette.ifBlank { "magenta" }
+        neonGlowPalette = runCatching { settings.neonGlowPalette }.getOrDefault("magenta").ifBlank { "magenta" }
         alwaysShowQuestProgress = settings.alwaysShowQuestProgress
         hideCompletedQuests = settings.hideCompletedQuests
         confirmDestructiveActions = true
@@ -431,9 +434,9 @@ fun AppRoot(appContext: Context) {
         dailyRemindersEnabled = settings.dailyRemindersEnabled
         hapticsEnabled = settings.hapticsEnabled
         soundEffectsEnabled = settings.soundEffectsEnabled
-        fontStyle = settings.fontStyle
+        fontStyle = runCatching { settings.fontStyle }.getOrDefault(AppFontStyle.DEFAULT)
         fontScalePercent = settings.fontScalePercent.coerceIn(80, 125)
-        backgroundImageUri = settings.backgroundImageUri
+        backgroundImageUri = runCatching { settings.backgroundImageUri }.getOrNull()
         backgroundImageTransparencyPercent = (settings.backgroundImageTransparencyPercent ?: backgroundImageTransparencyPercent).coerceIn(0, 100)
         textColorOverride = settings.textColorArgb?.let { Color(it.toInt()) }
         appBackgroundColorOverride = settings.appBackgroundArgb?.let { Color(it.toInt()) }
@@ -442,7 +445,7 @@ fun AppRoot(appContext: Context) {
         buttonColorOverride = settings.buttonColorArgb?.let { Color(it.toInt()) }
         journalPageColorOverride = settings.journalPageColorArgb?.let { Color(it.toInt()) }
         journalAccentColorOverride = settings.journalAccentColorArgb?.let { Color(it.toInt()) }
-        journalName = settings.journalName.ifBlank { "Journal" }
+        journalName = runCatching { settings.journalName }.getOrDefault("Journal").ifBlank { "Journal" }
     }
 
     fun persistAttributes(attrs: PlayerAttributes) {
@@ -541,6 +544,43 @@ fun AppRoot(appContext: Context) {
         scope.launch { appContext.dataStore.edit { p -> p[Keys.COMMUNITY_MY_RATINGS] = serializeRatingsMap(map) } }
     }
 
+    fun persistHealthDailySnapshot(snapshot: HealthDailySnapshot?) {
+        healthDailySnapshot = snapshot
+        scope.launch {
+            appContext.dataStore.edit { p ->
+                if (snapshot == null) {
+                    p.remove(Keys.HEALTH_DAILY_SNAPSHOT)
+                } else {
+                    p[Keys.HEALTH_DAILY_SNAPSHOT] = Gson().toJson(snapshot)
+                }
+            }
+        }
+    }
+
+    fun metricValueForQuest(snapshot: HealthDailySnapshot, metric: String?): Int {
+        return when (metric?.trim()?.lowercase(Locale.getDefault())) {
+            "steps" -> snapshot.steps
+            "heart_rate" -> snapshot.avgHeartRate ?: 0
+            "distance_m" -> snapshot.distanceMeters.toInt()
+            "calories_kcal" -> snapshot.caloriesKcal.toInt()
+            else -> 0
+        }
+    }
+
+    fun syncHealthObjectiveQuestProgress(snapshot: HealthDailySnapshot?) {
+        if (snapshot == null) return
+        val updated = quests.map { q ->
+            if (q.completed || q.objectiveType != QuestObjectiveType.HEALTH) return@map q
+            val value = metricValueForQuest(snapshot, q.healthMetric).coerceAtLeast(0)
+            val target = q.target.coerceAtLeast(1)
+            val mapped = if (value >= target) target + 1 else value
+            if (mapped == q.currentProgress) q else q.copy(currentProgress = mapped)
+        }
+        if (updated != quests) {
+            quests = updated
+        }
+    }
+
     fun persistCommunitySyncQueue(list: List<CommunitySyncTask>) {
         val normalized = normalizeCommunitySyncQueue(list)
         pendingCommunitySyncQueue = normalized
@@ -598,7 +638,7 @@ fun AppRoot(appContext: Context) {
     suspend fun syncCommunityFromRemote() {
         if (!SupabaseApi.isConfigured || communityUserId.isBlank()) return
         flushCommunitySyncQueue()
-        val remotePosts = SupabaseApi.fetchPosts()
+        val remotePosts = runCatching { SupabaseApi.fetchPosts() }.getOrDefault(emptyList())
             .filterNot { blockedAuthorIds.contains(it.authorId) || mutedAuthorIds.contains(it.authorId) }
             .map { post ->
                 val metadataSuspicious =
@@ -620,11 +660,71 @@ fun AppRoot(appContext: Context) {
             }
         if (remotePosts.isNotEmpty() || communityPosts.isEmpty()) persistCommunityPosts(remotePosts)
 
-        val remoteFollows = SupabaseApi.fetchFollows(communityUserId)
+        val remoteFollows = runCatching { SupabaseApi.fetchFollows(communityUserId) }.getOrDefault(emptySet())
         if (remoteFollows.isNotEmpty() || followedAuthorIds.isEmpty()) persistCommunityFollows(remoteFollows)
 
-        val remoteRatings = SupabaseApi.fetchRatings(communityUserId)
+        val remoteRatings = runCatching { SupabaseApi.fetchRatings(communityUserId) }.getOrDefault(emptyMap())
         if (remoteRatings.isNotEmpty() || myCommunityRatings.isEmpty()) persistCommunityRatings(remoteRatings)
+
+        val postIds = remotePosts.take(40).map { it.id }
+        if (postIds.isEmpty()) {
+            communityCommentsByPost = emptyMap()
+            myCommunityCommentVotes = emptyMap()
+        } else {
+            val myVotes = runCatching { SupabaseApi.fetchMyCommentVotes(communityUserId) }.getOrDefault(emptyMap())
+            myCommunityCommentVotes = myVotes
+            val commentMap = mutableMapOf<String, List<CommunityComment>>()
+            postIds.distinct().forEach { postId ->
+                commentMap[postId] = runCatching { SupabaseApi.fetchComments(postId) }.getOrDefault(emptyList()).map { c ->
+                    c.copy(myVote = myVotes[c.id] ?: 0)
+                }
+            }
+            communityCommentsByPost = commentMap
+        }
+    }
+
+
+    suspend fun refreshCommunityComments(postIds: List<String>) {
+        if (!SupabaseApi.isConfigured || communityUserId.isBlank()) return
+        if (postIds.isEmpty()) {
+            communityCommentsByPost = emptyMap()
+            myCommunityCommentVotes = emptyMap()
+            return
+        }
+        val myVotes = runCatching { SupabaseApi.fetchMyCommentVotes(communityUserId) }.getOrDefault(emptyMap())
+        myCommunityCommentVotes = myVotes
+        val map = mutableMapOf<String, List<CommunityComment>>()
+        postIds.distinct().forEach { postId ->
+            val comments = runCatching { SupabaseApi.fetchComments(postId) }.getOrDefault(emptyList()).map { c ->
+                c.copy(myVote = myVotes[c.id] ?: 0)
+            }
+            map[postId] = comments
+        }
+        communityCommentsByPost = map
+    }
+
+    fun submitCommunityComment(postId: String, body: String) {
+        val clean = body.trim().take(500)
+        if (clean.length < 2) return
+        scope.launch {
+            val ok = runCatching { SupabaseApi.postComment(postId, communityUserId, communityUserName, clean) }.getOrDefault(false)
+            if (ok) {
+                refreshCommunityComments(listOf(postId))
+            } else {
+                snackbarHostState.showSnackbar("Comment failed to post.")
+            }
+        }
+    }
+
+    fun voteCommunityComment(postId: String, commentId: String, vote: Int) {
+        scope.launch {
+            val ok = runCatching { SupabaseApi.voteComment(commentId, communityUserId, vote) }.getOrDefault(false)
+            if (ok) {
+                refreshCommunityComments(listOf(postId))
+            } else {
+                snackbarHostState.showSnackbar("Vote failed.")
+            }
+        }
     }
 
     fun triggerCommunityRefresh() {
@@ -1191,6 +1291,7 @@ fun AppRoot(appContext: Context) {
         journalPageColorOverride = prefs[Keys.JOURNAL_PAGE_COLOR_ARGB]?.let { Color(it) }
         journalAccentColorOverride = prefs[Keys.JOURNAL_ACCENT_COLOR_ARGB]?.let { Color(it) }
         journalName = prefs[Keys.JOURNAL_NAME].orEmpty().ifBlank { "Journal" }
+        healthDailySnapshot = runCatching { Gson().fromJson(prefs[Keys.HEALTH_DAILY_SNAPSHOT].orEmpty(), HealthDailySnapshot::class.java) }.getOrNull()
         val savedLang = prefs[Keys.APP_LANGUAGE].orEmpty().ifBlank { "system" }
         appLanguage = savedLang
         appContext.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
@@ -1215,11 +1316,7 @@ fun AppRoot(appContext: Context) {
         unlockedAchievementIds = parseUnlockedAchievements(prefs[Keys.ACHIEVEMENTS].orEmpty())
         inventory = deserializeInventory(prefs[Keys.INVENTORY].orEmpty())
         val savedShop = deserializeShopItems(prefs[Keys.SHOP_ITEMS])
-        shopItems = savedShop.ifEmpty {
-            val defaults = getDefaultShopItems()
-            persistShopItems(defaults)
-            defaults
-        }
+        shopItems = savedShop
         calendarPlans = deserializeCalendarPlans(prefs[Keys.CALENDAR_PLANS])
 
         val rawAttr = prefs[Keys.ATTRIBUTES_RAW]
@@ -1493,6 +1590,9 @@ Hard rules:
     - xp must be 10..300
     - target must be >= 1
     - title must be short and clear for mobile UI
+    - objective_type allowed: COUNT, TIMER, HEALTH
+    - for TIMER quests: target_seconds must be 30..86400 and target should remain >= 1
+    - for HEALTH quests: set health_metric to one of steps, heart_rate, distance_m, calories_kcal
     - avoid filler duplicates (for example repetitive numbered clones like "Quest #2/#3/#4")
     - if USER REQUEST does not specify category distribution, auto-distribute across all 5 categories: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND
     - in default auto-distribution, keep category counts near-balanced (max difference is 1)
@@ -1548,7 +1648,7 @@ Final output:
                 "Required keys: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.",
                 "guide and ai_instructions are optional in the final returned file.",
                 "Use only category values: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.",
-                "Daily rules: difficulty 1..5, xp 10..300, target >= 1.",
+                "Daily rules: difficulty 1..5, xp 10..300, target >= 1, objective_type in COUNT|TIMER|HEALTH. TIMER uses target_seconds (30..86400). HEALTH uses health_metric (steps|heart_rate|distance_m|calories_kcal).",
                 "If user does not specify category distribution, auto-distribute across FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.",
                 "Default auto-distribution should be near-balanced (difference <= 1).",
                 "If user specifies category focus/per-category counts, follow that request within app caps.",
@@ -1574,7 +1674,8 @@ Final output:
                     "AI may generate shop_items when requested.",
                     "Current quests are placeholders/examples and can be replaced.",
                     "daily_quests: category must be FITNESS|STUDY|HYDRATION|DISCIPLINE|MIND.",
-                    "daily_quests: difficulty 1..5, xp 10..300, target >= 1.",
+                    "daily_quests: difficulty 1..5, xp 10..300, target >= 1. objective_type COUNT|TIMER|HEALTH.",
+                    "daily_quests: TIMER uses target_seconds 30..86400. HEALTH uses health_metric steps|heart_rate|distance_m|calories_kcal.",
                     "If category distribution is not requested, auto-distribute across all 5 categories.",
                     "Default distribution should be near-balanced (difference <= 1).",
                     "If category focus/per-category counts are requested, follow that request.",
@@ -1592,8 +1693,8 @@ Final output:
                 )
             ),
             daily_quests = listOf(
-                AdvancedDailyQuestEntry(title = "Morning walk 20 min", category = QuestCategory.FITNESS.name, difficulty = 2, xp = 20, target = 1, icon = "🚶"),
-                AdvancedDailyQuestEntry(title = "Deep work session", category = QuestCategory.STUDY.name, difficulty = 3, xp = 35, target = 1, icon = "🧠")
+                AdvancedDailyQuestEntry(title = "Morning walk 20 min", category = QuestCategory.FITNESS.name, difficulty = 2, xp = 20, target = 1, icon = "🚶", objective_type = "HEALTH", health_metric = "steps", health_aggregation = "daily_total"),
+                AdvancedDailyQuestEntry(title = "Deep work session", category = QuestCategory.STUDY.name, difficulty = 3, xp = 35, target = 1, icon = "🧠", objective_type = "TIMER", target_seconds = 3600)
             ),
             main_quests = listOf(
                 AdvancedMainQuestEntry(ref = "mq_1", title = "Build Consistency", description = "Finish 30 focused days in a row.", xp_reward = 400, steps = listOf("Week 1", "Week 2", "Week 3", "Week 4"), icon = "🏆"),
@@ -1642,7 +1743,7 @@ Final output:
         if (payload.isBlank()) return AdvancedTemplateImportResult(false, "Unnamed", 0, 0, errors = listOf("File is empty."))
         val parsed = runCatching { advancedTemplateGson.fromJson(payload, AdvancedTemplateFile::class.java) }.getOrNull()
             ?: return AdvancedTemplateImportResult(false, "Unnamed", 0, 0, errors = listOf("Invalid JSON format."))
-        val supportedSchema = 1
+        val supportedSchema = 2
         if (parsed.schema_version > supportedSchema) {
             return AdvancedTemplateImportResult(
                 success = false,
@@ -1665,6 +1766,9 @@ Final output:
             if (title.isBlank()) { warnings += "Daily[$index] skipped: missing title."; return@mapIndexedNotNull null }
             val category = runCatching { QuestCategory.valueOf(q.category.trim().uppercase(Locale.getDefault())) }.getOrNull()
             if (category == null) { warnings += "Daily[$index] skipped: invalid category '${q.category}'."; return@mapIndexedNotNull null }
+            val objectiveType = runCatching { QuestObjectiveType.valueOf(q.objective_type.trim().uppercase(Locale.getDefault())) }.getOrDefault(QuestObjectiveType.COUNT)
+            val safeHealthMetric = q.health_metric?.trim()?.lowercase(Locale.getDefault())?.takeIf { it in setOf("steps", "heart_rate", "distance_m", "calories_kcal") }
+            val safeTargetSeconds = q.target_seconds?.coerceIn(30, 24 * 60 * 60)
             CustomTemplate(
                 id = UUID.randomUUID().toString(),
                 category = category,
@@ -1672,10 +1776,14 @@ Final output:
                 title = title,
                 icon = q.icon.trim().ifBlank { "✅" }.take(3),
                 xp = q.xp.coerceIn(1, 5000),
-                target = q.target.coerceIn(1, 500),
+                target = if (objectiveType == QuestObjectiveType.TIMER) (safeTargetSeconds ?: q.target).coerceIn(30, 24 * 60 * 60) else q.target.coerceIn(1, 500),
                 isPinned = q.pinned,
                 imageUri = q.image_uri?.takeIf { it.isNotBlank() },
-                packageId = packageId
+                packageId = packageId,
+                objectiveType = objectiveType,
+                targetSeconds = if (objectiveType == QuestObjectiveType.TIMER) safeTargetSeconds else null,
+                healthMetric = if (objectiveType == QuestObjectiveType.HEALTH) safeHealthMetric else null,
+                healthAggregation = if (objectiveType == QuestObjectiveType.HEALTH) q.health_aggregation?.trim()?.take(32) else null
             )
         }.distinctBy { it.title.lowercase(Locale.getDefault()) }
         val dailyTierMinXp = mapOf(1 to 10, 2 to 24, 3 to 48, 4 to 80, 5 to 120)
@@ -1800,7 +1908,11 @@ Final output:
                 target = qt.target,
                 isPinned = qt.isPinned,
                 imageUri = qt.imageUri,
-                packageId = t.packageId
+                packageId = t.packageId,
+                objectiveType = qt.objectiveType,
+                targetSeconds = qt.targetSeconds,
+                healthMetric = qt.healthMetric,
+                healthAggregation = qt.healthAggregation
             )
         }
         persistCustomTemplates(mappedDailies)
@@ -1829,12 +1941,16 @@ Final output:
                 target = qt.target,
                 isPinned = qt.isPinned,
                 imageUri = qt.imageUri,
-                packageId = template.packageId
+                packageId = template.packageId,
+                objectiveType = qt.objectiveType,
+                targetSeconds = qt.targetSeconds,
+                healthMetric = qt.healthMetric,
+                healthAggregation = qt.healthAggregation
             )
         }
         persistCustomTemplates(mappedDailies)
         persistMainQuests(template.mainQuests)
-        persistShopItems(template.shopItems.ifEmpty { getDefaultShopItems() })
+        persistShopItems(template.shopItems)
         activePackageIds = setOf(template.packageId)
         scope.launch { appContext.dataStore.edit { p -> p[activePacksKey] = activePackageIds.joinToString(",") } }
         regenerateForDay(currentEpochDay())
@@ -2578,7 +2694,7 @@ Final output:
 
             unlockedAchievementIds = emptySet()
             inventory = emptyList()
-            shopItems = defaultTemplate.shopItems.ifEmpty { getDefaultShopItems() }
+            shopItems = defaultTemplate.shopItems
             calendarPlans = emptyMap()
             attributes = PlayerAttributes(1, 1, 1, 1, 1)
             activePackageIds = setOf(defaultTemplate.packageId)
@@ -2891,7 +3007,7 @@ Final output:
                         if (importClearExisting) {
                             persistCustomTemplates(mappedDailies)
                             persistMainQuests(t.mainQuests)
-                            persistShopItems(t.shopItems.ifEmpty { getDefaultShopItems() })
+                            persistShopItems(t.shopItems)
                             activePackageIds = setOf(t.packageId)
                             applyTemplateDailyQuestDefaults(t.packageId, clearExisting = true)
                             persistSettings()
@@ -2930,7 +3046,7 @@ Final output:
 
                 // 1. Add Dailies (Avoid duplicates)
                 val newDailies = template.dailyQuests.map { qt ->
-                    CustomTemplate(UUID.randomUUID().toString(), qt.category, qt.difficulty, qt.title, qt.icon, qt.xp, qt.target, qt.isPinned, qt.imageUri, pid)
+                    CustomTemplate(UUID.randomUUID().toString(), qt.category, qt.difficulty, qt.title, qt.icon, qt.xp, qt.target, qt.isPinned, qt.imageUri, pid, true, qt.objectiveType, qt.targetSeconds, qt.healthMetric, qt.healthAggregation)
                 }
                 val currentTitles = customTemplates.map { it.title }
                 val toAdd = newDailies.filter { !currentTitles.contains(it.title) }
@@ -2946,6 +3062,12 @@ Final output:
                 val mainsToAdd = newMains.filter { !currentMqIds.contains(it.id) }
                 persistMainQuests(mainQuests + mainsToAdd)
 
+                // 3. Add Shop Items
+                val prefixedShop = template.shopItems.map { it.copy(id = "${pid}_${it.id}".take(64)) }
+                val currentShopIds = shopItems.map { it.id }.toSet()
+                val shopToAdd = prefixedShop.filterNot { currentShopIds.contains(it.id) }
+                persistShopItems(shopItems + shopToAdd)
+
                 SoundManager.playAccept() // Nice feedback
 
             } else {
@@ -2957,6 +3079,9 @@ Final output:
 
                 // 2. Remove Main Quests belonging to this pack
                 persistMainQuests(mainQuests.filter { it.packageId != pid })
+
+                // 3. Remove Shop Items belonging to this pack
+                persistShopItems(shopItems.filterNot { it.id.startsWith("${pid}_") })
 
                 SoundManager.playClick()
             }
@@ -3201,17 +3326,20 @@ Final output:
                                 mutedAuthorIds = mutedAuthorIds,
                                 blockedAuthorIds = blockedAuthorIds,
                                 myRatings = myCommunityRatings,
+                                commentsByPost = communityCommentsByPost,
                                 pendingSyncCount = pendingCommunitySyncQueue.size,
                                 isRefreshing = communityRefreshInProgress,
-                                onRefresh = { },
-                                onChangeUserName = { },
-                                onPublish = { _, _, _ -> },
-                                onToggleFollow = { _ -> },
-                                onToggleMute = { _ -> },
-                                onToggleBlock = { _ -> },
-                                onReport = { _ -> },
-                                onRate = { _, _ -> },
-                                onRemix = { _ -> },
+                                onRefresh = { triggerCommunityRefresh() },
+                                onChangeUserName = { persistCommunityProfile(communityUserId, it) },
+                                onPublish = { title, desc, tags -> publishCurrentTemplateToCommunity(title, desc, tags) },
+                                onToggleFollow = { onToggleFollowAuthor(it) },
+                                onToggleMute = { onToggleMuteAuthor(it) },
+                                onToggleBlock = { onToggleBlockAuthor(it) },
+                                onReport = { onReportAuthor(it) },
+                                onRate = { id, stars -> onRateCommunityPost(id, stars) },
+                                onRemix = { onRemixCommunityPost(it) },
+                                onSubmitComment = { postId, body -> submitCommunityComment(postId, body) },
+                                onVoteComment = { postId, commentId, vote -> voteCommunityComment(postId, commentId, vote) },
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
                                 onOpenSettings = { screen = Screen.SETTINGS }
                             )
@@ -3300,6 +3428,10 @@ Final output:
                                     scope.launch { snackbarHostState.showSnackbar("Template saved.") }
                                 },
                                 onApplySavedTemplate = { t, backupName, clearExisting -> // UPDATED: Added clearExisting
+                                    val safeTemplate = runCatching { normalizeGameTemplateSafe(t) }.getOrElse {
+                                        scope.launch { snackbarHostState.showSnackbar("Template is incompatible. Re-export it from latest app version.") }
+                                        return@QuestsScreen
+                                    }
                                     if (!backupName.isNullOrBlank()) {
                                         val backup = GameTemplate(
                                             backupName,
@@ -3312,12 +3444,12 @@ Final output:
                                         )
                                         persistSavedTemplates(savedTemplates + backup)
                                     }
-                                    appTheme = normalizeTheme(t.appTheme)
-                                    accent = t.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
-                                    applyTemplateSettings(t.templateSettings)
+                                    appTheme = normalizeTheme(safeTemplate.appTheme)
+                                    accent = safeTemplate.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
+                                    applyTemplateSettings(safeTemplate.templateSettings)
                                     persistSettings()
 
-                                    val mappedDailies = t.dailyQuests.map { qt ->
+                                    val mappedDailies = safeTemplate.dailyQuests.map { qt ->
                                         CustomTemplate(
                                             id = UUID.randomUUID().toString(),
                                             category = qt.category,
@@ -3328,27 +3460,31 @@ Final output:
                                             target = qt.target,
                                             isPinned = qt.isPinned,
                                             imageUri = qt.imageUri,
-                                            packageId = t.packageId
+                                            packageId = safeTemplate.packageId,
+                                            objectiveType = qt.objectiveType,
+                                            targetSeconds = qt.targetSeconds,
+                                            healthMetric = qt.healthMetric,
+                                            healthAggregation = qt.healthAggregation
                                         )
                                     }
 
                                     if (clearExisting) {
                                         persistCustomTemplates(mappedDailies)
-                                        persistMainQuests(t.mainQuests)
-                                        persistShopItems(t.shopItems.ifEmpty { getDefaultShopItems() })
-                                        activePackageIds = setOf(t.packageId)
-                                        applyTemplateDailyQuestDefaults(t.packageId, clearExisting = true)
+                                        persistMainQuests(safeTemplate.mainQuests)
+                                        persistShopItems(safeTemplate.shopItems)
+                                        activePackageIds = setOf(safeTemplate.packageId)
+                                        applyTemplateDailyQuestDefaults(safeTemplate.packageId, clearExisting = true)
                                         persistSettings()
                                     } else {
                                         val newCustoms = customTemplates + mappedDailies
                                         persistCustomTemplates(newCustoms.distinctBy { it.title })
-                                        val newMqs = mainQuests + t.mainQuests
+                                        val newMqs = mainQuests + safeTemplate.mainQuests
                                         persistMainQuests(newMqs.distinctBy { it.title })
-                                        if (t.shopItems.isNotEmpty()) {
-                                            val mergedShop = (shopItems + t.shopItems).distinctBy { it.id }
+                                        if (safeTemplate.shopItems.isNotEmpty()) {
+                                            val mergedShop = (shopItems + safeTemplate.shopItems).distinctBy { it.id }
                                             persistShopItems(mergedShop)
                                         }
-                                        activePackageIds = activePackageIds + t.packageId
+                                        activePackageIds = activePackageIds + safeTemplate.packageId
                                     }
                                     scope.launch { appContext.dataStore.edit { p -> p[activePacksKey] = activePackageIds.joinToString(",") } }
                                     scope.launch { snackbarHostState.showSnackbar("Theme & Quests Applied!") }
@@ -3384,6 +3520,11 @@ Final output:
                                 streak = streak,
                                 history = historyMap,
                                 unlockedAchievementIds = unlockedAchievementIds,
+                                healthSnapshot = healthDailySnapshot,
+                                onSaveHealthSnapshot = {
+                                    persistHealthDailySnapshot(it)
+                                    syncHealthObjectiveQuestProgress(it)
+                                },
                                 accentStrong = accentStrong,
                                 accentSoft = accentSoft,
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
