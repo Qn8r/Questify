@@ -61,7 +61,16 @@ data class TemplateSettings(
     val fontStyle: AppFontStyle = AppFontStyle.DEFAULT,
     val fontScalePercent: Int = 100,
     val backgroundImageUri: String? = null,
+    val backgroundImageTintEnabled: Boolean = true,
     val backgroundImageTransparencyPercent: Int? = null,
+    val accentTransparencyPercent: Int? = null,
+    val textTransparencyPercent: Int? = null,
+    val appBgTransparencyPercent: Int? = null,
+    val chromeBgTransparencyPercent: Int? = null,
+    val cardBgTransparencyPercent: Int? = null,
+    val journalPageTransparencyPercent: Int? = null,
+    val journalAccentTransparencyPercent: Int? = null,
+    val buttonTransparencyPercent: Int? = null,
     val textColorArgb: Long? = null,
     val appBackgroundArgb: Long? = null,
     val chromeBackgroundArgb: Long? = null,
@@ -346,7 +355,7 @@ data class FullBackupPayload(
 
 data class AdvancedTemplateGuide(
     val summary: String = "Edit daily_quests, main_quests, and optional shop_items with AI, then import this file in Settings > Advanced Templates.",
-    val ai_prompt_example: String = "Add 100 daily quests, 30 main quests, and 20 balanced shop items. Also set app_theme and accent_argb.",
+    val ai_prompt_example: String = "",
     val notes: List<String> = listOf(
         "Use category: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND",
         "difficulty must be 1..5",
@@ -405,6 +414,7 @@ data class AdvancedTemplateFile(
         "Return ONLY the updated JSON file content (no markdown, no explanation)."
     ),
     val guide: AdvancedTemplateGuide = AdvancedTemplateGuide(),
+    val template_settings: TemplateSettings? = null,
     val daily_quests: List<AdvancedDailyQuestEntry> = emptyList(),
     val main_quests: List<AdvancedMainQuestEntry> = emptyList(),
     val shop_items: List<AdvancedShopItemEntry> = emptyList()

@@ -65,6 +65,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -88,6 +89,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.text.AnnotatedString
@@ -163,7 +165,7 @@ fun ScalableHeader(
     val isLight = ThemeRuntime.currentTheme.isLightCategory()
     Row(modifier = Modifier.fillMaxWidth().height(56.dp).padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         if (showMenu) {
-            IconButton(onClick = onOpenDrawer) { Icon(Icons.Default.Menu, "Open navigation menu", tint = OnCardText, modifier = Modifier.size(24.dp * uiScale)) }
+            IconButton(onClick = onOpenDrawer) { Icon(Icons.Default.Menu, stringResource(R.string.nav_menu_desc), tint = OnCardIcon, modifier = Modifier.size(24.dp * uiScale)) }
         }
         Text(text = title, color = OnCardText, fontSize = (maxOf(20f * uiScale, 16f)).sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(start = if (showMenu) 12.dp else 4.dp))
         titleEndContent()
@@ -172,8 +174,8 @@ fun ScalableHeader(
             IconButton(onClick = onToggleTheme) {
                 Icon(
                     if (isLight) Icons.Default.DarkMode else Icons.Default.LightMode,
-                    contentDescription = "Toggle theme",
-                    tint = OnCardText.copy(alpha = 0.86f),
+                    contentDescription = stringResource(R.string.open_theme_presets_desc),
+                    tint = OnCardIcon.copy(alpha = 0.86f),
                     modifier = Modifier.size(22.dp * uiScale)
                 )
             }
@@ -226,14 +228,14 @@ fun CoachmarkOverlay(
                 Text(step.body, color = OnCardText.copy(alpha = 0.88f), fontSize = 12.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
                 Spacer(Modifier.weight(1f))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onDone) { Text("Skip", color = OnCardText.copy(alpha = 0.8f)) }
+                    TextButton(onClick = onDone) { Text(stringResource(R.string.l10n_skip), color = OnCardText.copy(alpha = 0.8f)) }
                     Button(
                         onClick = {
                             if (stepIndex >= steps.lastIndex) onDone() else stepIndex++
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = accent, contentColor = Color.Black)
                     ) {
-                        Text(if (stepIndex >= steps.lastIndex) "Done" else "Next", fontWeight = FontWeight.Bold)
+                        Text(if (stepIndex >= steps.lastIndex) stringResource(R.string.done) else stringResource(R.string.next), fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -299,9 +301,9 @@ fun RowScope.TikTokNavButton(
     onClick: () -> Unit
 ) {
     val normalizedEmphasis = emphasis.coerceIn(0f, 1f)
-    val color = lerp(baseColor.copy(alpha = 0.5f), accent, normalizedEmphasis)
+    val color = lerp(baseColor.scaleAlpha(0.5f), accent, normalizedEmphasis)
     val pillShape = RoundedCornerShape(14.dp)
-    val selectedBg = if (selected) mixForBackground(accent, surfaceColor).copy(alpha = 0.20f) else Color.Transparent
+    val selectedBg = if (selected) mixForBackground(accent, surfaceColor).scaleAlpha(0.20f) else Color.Transparent
     Column(
         modifier = Modifier
             .weight(1f)
@@ -323,14 +325,14 @@ fun RowScope.TikTokNavButton(
 fun AvatarPickerDialog(accentStrong: Color, onPreset: (String) -> Unit, onPick: () -> Unit, onDismiss: () -> Unit) {
     val presets = listOf("🧙‍♂️", "🧝‍♂️", "🥷", "🧛‍♂️", "🧟‍♂️", "🧑‍🚀", "👑", "🐺")
     AlertDialog(
-        onDismissRequest = onDismiss, title = { Text("Choose avatar", fontWeight = FontWeight.Bold, color = OnCardText) },
+        onDismissRequest = onDismiss, title = { Text(stringResource(R.string.choose_avatar), fontWeight = FontWeight.Bold, color = OnCardText) },
         text = { @OptIn(ExperimentalLayoutApi::class) FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) { presets.forEach { emoji -> Box(modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(CardDarkBlue).clickable { SoundManager.playClick(); onPreset(emoji) }, contentAlignment = Alignment.Center) { Text(emoji, fontSize = 22.sp) } } } },
-        confirmButton = { TextButton(onClick = { SoundManager.playClick(); onPick() }) { Text("Pick image", color = accentStrong) } }, dismissButton = { TextButton(onClick = { SoundManager.playClick(); onDismiss() }) { Text("Close", color = OnCardText) } }
+        confirmButton = { TextButton(onClick = { SoundManager.playClick(); onPick() }) { Text(stringResource(R.string.pick_image), color = accentStrong) } }, dismissButton = { TextButton(onClick = { SoundManager.playClick(); onDismiss() }) { Text(stringResource(R.string.close), color = OnCardText) } }
     )
 }
 
 // === HOME SCREEN (Updated with Boss UI) ===
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     modifier: Modifier, appContext: Context, quests: List<Quest>, bosses: List<Boss>, avatar: Avatar, levelInfo: LevelInfo, attributes: PlayerAttributes,
@@ -338,8 +340,13 @@ fun HomeScreen(
     onRefresh: () -> Unit,
     isRefreshing: Boolean,
     onClaimQuest: (Int) -> Unit,
-    onProgress: (Int, Int) -> Unit, // NEW PARAMETER
+    onProgress: (Int, Int) -> Unit,
+    onTimerTick: (Int, Int) -> Unit,
+    onTimerComplete: (Int, Int) -> Unit,
+    onTimerPause: () -> Unit,
     onResetQuestProgress: (Int) -> Unit,
+    onRemoveQuest: (Int) -> Unit,
+    onOpenQuestEditor: (Int) -> Unit,
     playerName: String,
     onSavePlayerName: (String) -> Unit,
     onChangeAvatar: (Avatar) -> Unit, onNavigate: (Screen) -> Unit,
@@ -348,6 +355,7 @@ fun HomeScreen(
     var showAvatarPicker by rememberSaveable { mutableStateOf(false) }
     var showNameEditor by rememberSaveable { mutableStateOf(false) }
     var questOptionsQuestId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var pendingQuestRemoveId by rememberSaveable { mutableStateOf<Int?>(null) }
     var nameDraft by remember(playerName) { mutableStateOf(playerName) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { picked ->
         if (picked != null) {
@@ -369,8 +377,8 @@ fun HomeScreen(
         val neonBorderBrush = if (neonBorderActive) rememberNeonBorderBrush(accentStrong, neonSecondary) else null
         val heroFrameBrush = Brush.verticalGradient(
             listOf(
-                CardDarkBlue.copy(alpha = 0.95f),
-                CardDarkBlue.copy(alpha = 0.78f)
+                CardDarkBlue.scaleAlpha(0.95f),
+                CardDarkBlue.scaleAlpha(0.78f)
             )
         )
         val heroBorderColor = when {
@@ -411,8 +419,8 @@ fun HomeScreen(
         } else {
             Brush.verticalGradient(
                 listOf(
-                    CardDarkBlue.copy(alpha = 0.95f),
-                    CardDarkBlue.copy(alpha = 0.75f)
+                    CardDarkBlue.scaleAlpha(0.95f),
+                    CardDarkBlue.scaleAlpha(0.75f)
                 )
             )
         }
@@ -443,8 +451,8 @@ fun HomeScreen(
             Column(modifier = Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy((6.dp * uiScale))) {
             // 1. Header
             ScalableHeader(title = stringResource(R.string.title_daily_quests), uiScale = uiScale, onOpenDrawer = onOpenDrawer, showMenu = true) {
-                if (streak > 0) { Text("🔥 $streak", color = Color(0xFFFF9800), fontSize = (16.sp * uiScale), fontWeight = FontWeight.Bold); Spacer(Modifier.width(12.dp)) }
-                IconButton(onClick = { onNavigate(Screen.SETTINGS) }) { Icon(Icons.Default.Settings, "Open settings", tint = OnCardText, modifier = Modifier.size(24.dp * uiScale)) }
+                if (streak > 0) { Text(stringResource(R.string.streak_label, streak), color = Color(0xFFFF9800), fontSize = (16.sp * uiScale), fontWeight = FontWeight.Bold); Spacer(Modifier.width(12.dp)) }
+                IconButton(onClick = { onNavigate(Screen.SETTINGS) }) { Icon(Icons.Default.Settings, stringResource(R.string.open_settings_desc), tint = OnCardIcon, modifier = Modifier.size(24.dp * uiScale)) }
             }
 
             // 2. Avatar & Stats Row
@@ -538,11 +546,11 @@ fun HomeScreen(
                                         Spacer(Modifier.width(6.dp))
                                         Icon(Icons.Default.Edit, null, tint = if (namePressed) accentStrong.copy(alpha = 1f) else accentStrong.copy(alpha = 0.9f), modifier = Modifier.size((16.dp * uiScale).coerceAtLeast(14.dp)))
                                     }
-                                    Text(text = "Lv ${levelInfo.level}", color = OnCardText.copy(alpha = 0.9f), fontSize = (16.sp * uiScale), fontWeight = FontWeight.Bold)
+                                    Text(text = stringResource(R.string.level_label, levelInfo.level), color = OnCardText.copy(alpha = 0.9f), fontSize = (16.sp * uiScale), fontWeight = FontWeight.Bold)
                                 }
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(text = "$gold", color = accentStrong, fontSize = (24.sp * uiScale), fontWeight = FontWeight.ExtraBold)
-                                    Text(text = "GOLD", color = OnCardText.copy(alpha = 0.65f), fontSize = (11.sp * uiScale), fontWeight = FontWeight.Bold)
+                                    Text(text = stringResource(R.string.gold_label), color = OnCardText.copy(alpha = 0.65f), fontSize = (11.sp * uiScale), fontWeight = FontWeight.Bold)
                                 }
                             }
                             XpBar(levelInfo = levelInfo, accentStrong = accentStrong, showValue = true, compact = true, showContainer = false)
@@ -570,7 +578,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(text = "DAILY QUESTS", color = OnCardText.copy(alpha = 0.9f), fontWeight = FontWeight.ExtraBold, fontSize = (12.sp * uiScale), letterSpacing = 1.sp)
+                        Text(text = stringResource(R.string.daily_quests_upper), color = OnCardText.copy(alpha = 0.9f), fontWeight = FontWeight.ExtraBold, fontSize = (12.sp * uiScale), letterSpacing = 1.sp)
                         Spacer(Modifier.width(6.dp))
                         Box(modifier = Modifier.size(24.dp * uiScale).clip(CircleShape).background(timerChipBg).clickable { onOpenFocus() }, contentAlignment = Alignment.Center) {
                             Icon(Icons.Default.Timer, null, tint = timerChipTint, modifier = Modifier.size(14.dp * uiScale))
@@ -596,7 +604,7 @@ fun HomeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Refresh $refreshCount/3",
+                                text = stringResource(R.string.refresh_limit, refreshCount),
                                 color = refreshContent,
                                 fontSize = (11.sp * uiScale),
                                 fontWeight = FontWeight.Bold
@@ -631,27 +639,42 @@ fun HomeScreen(
                                 verticalArrangement = Arrangement.Center,
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                Text("No quests.", color = OnCardText.copy(alpha = 0.5f))
+                                Text(stringResource(R.string.no_quests), color = OnCardText.copy(alpha = 0.5f))
                                 Spacer(Modifier.height(10.dp))
                                 TextButton(onClick = { onNavigate(Screen.QUESTS) }) {
-                                    Text("Open Quests & Templates", color = accentStrong, fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.l10n_open_quests_templates), color = accentStrong, fontWeight = FontWeight.Bold)
                                 }
                             }
                         }
                     } else {
                         items(quests) { q ->
-                            // FIX: Use QuestCard here, not MainQuestItem
+                            val questRowInteraction = remember { MutableInteractionSource() }
+                            val questRowPressed by questRowInteraction.collectIsPressedAsState()
+                            val questHoldPulse by rememberInfiniteTransition(label = "home_quest_hold_pulse").animateFloat(
+                                initialValue = 1f,
+                                targetValue = 1.015f,
+                                animationSpec = infiniteRepeatable(animation = tween(640), repeatMode = RepeatMode.Reverse),
+                                label = "home_quest_hold_pulse_value"
+                            )
                             QuestCard(
                                 quest = q,
                                 accentStrong = accentStrong,
                                 accentSoft = accentSoft,
-                                modifier = Modifier.pointerInput(q.id) {
-                                    detectTapGestures(
-                                        onLongPress = {
+                                modifier = Modifier
+                                    .graphicsLayer {
+                                        val pressedScale = if (questRowPressed) questHoldPulse else 1f
+                                        scaleX = pressedScale
+                                        scaleY = pressedScale
+                                        alpha = if (questRowPressed) 0.93f else 1f
+                                    }
+                                    .combinedClickable(
+                                        interactionSource = questRowInteraction,
+                                        indication = null,
+                                        onLongClick = {
                                             SoundManager.playClick()
                                             questOptionsQuestId = q.id
                                         },
-                                        onTap = {
+                                        onClick = {
                                             if (!q.completed) {
                                                 val target = q.target
                                                 val current = q.currentProgress
@@ -662,12 +685,14 @@ fun HomeScreen(
                                                 }
                                             }
                                         }
-                                    )
-                                },
+                                    ),
                                 uiScale = uiScale,
                                 alwaysShowProgress = alwaysShowQuestProgress,
                                 onClaimQuest = { onClaimQuest(q.id) },
-                                onProgress = { p -> onProgress(q.id, p) }
+                                onProgress = { p -> onProgress(q.id, p) },
+                                onTimerTick = { p -> onTimerTick(q.id, p) },
+                                onTimerComplete = { p -> onTimerComplete(q.id, p) },
+                                onTimerPause = onTimerPause
                             )
                         }
                     }
@@ -679,22 +704,78 @@ fun HomeScreen(
     if (showAvatarPicker) { AvatarPickerDialog(accentStrong = accentStrong, onPreset = { onChangeAvatar(Avatar.Preset(it)); showAvatarPicker = false }, onPick = { imagePicker.launch(arrayOf("image/*")); showAvatarPicker = false }, onDismiss = { showAvatarPicker = false }) }
     val selectedQuest = quests.firstOrNull { it.id == questOptionsQuestId }
     if (selectedQuest != null) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { questOptionsQuestId = null },
             containerColor = CardDarkBlue,
-            title = { Text("Quest Options", color = OnCardText, fontWeight = FontWeight.Bold) },
-            text = { Text(selectedQuest.title, color = OnCardText.copy(alpha = 0.8f)) },
+            contentColor = OnCardText,
+            dragHandle = { BottomSheetDefaults.DragHandle() }
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 18.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(stringResource(R.string.quest_options), color = OnCardText, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                Text(selectedQuest.title, color = OnCardText.copy(alpha = 0.82f), fontSize = 14.sp)
+                Spacer(Modifier.height(4.dp))
+                OutlinedButton(
+                    onClick = {
+                        questOptionsQuestId = null
+                        onOpenQuestEditor(selectedQuest.id)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OnCardText)
+                ) {
+                    Text(stringResource(R.string.edit))
+                }
+                OutlinedButton(
+                    onClick = {
+                        onResetQuestProgress(selectedQuest.id)
+                        questOptionsQuestId = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = OnCardText)
+                ) {
+                    Text(stringResource(R.string.l10n_reset_progress))
+                }
+                OutlinedButton(
+                    onClick = {
+                        pendingQuestRemoveId = selectedQuest.id
+                        questOptionsQuestId = null
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE57373))
+                ) {
+                    Text(stringResource(R.string.remove))
+                }
+                TextButton(
+                    onClick = { questOptionsQuestId = null },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(stringResource(R.string.cancel), color = accentStrong, fontWeight = FontWeight.Bold)
+                }
+                Spacer(Modifier.height(12.dp))
+            }
+        }
+    }
+    if (pendingQuestRemoveId != null) {
+        AlertDialog(
+            onDismissRequest = { pendingQuestRemoveId = null },
+            containerColor = CardDarkBlue,
+            title = { Text(stringResource(R.string.l10n_remove_quest), color = OnCardText, fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.l10n_this_removes_the_quest_from_today_you_can_), color = OnCardText.copy(alpha = 0.82f)) },
             confirmButton = {
                 TextButton(onClick = {
-                    onResetQuestProgress(selectedQuest.id)
-                    questOptionsQuestId = null
+                    onRemoveQuest(pendingQuestRemoveId!!)
+                    pendingQuestRemoveId = null
                 }) {
-                    Text("Reset Progress", color = accentStrong, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.remove), color = Color(0xFFE57373), fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { questOptionsQuestId = null }) {
-                    Text("Cancel", color = OnCardText)
+                TextButton(onClick = { pendingQuestRemoveId = null }) {
+                    Text(stringResource(R.string.cancel), color = OnCardText)
                 }
             }
         )
@@ -703,13 +784,13 @@ fun HomeScreen(
         AlertDialog(
             onDismissRequest = { showNameEditor = false },
             containerColor = CardDarkBlue,
-            title = { Text("Set Player Name", color = accentStrong, fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.set_player_name), color = accentStrong, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = nameDraft,
                     onValueChange = { nameDraft = it },
                     singleLine = true,
-                    label = { Text("Player name", color = OnCardText.copy(alpha = 0.6f)) },
+                    label = { Text(stringResource(R.string.player_name_label), color = OnCardText.copy(alpha = 0.6f)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = OnCardText,
                         unfocusedTextColor = OnCardText,
@@ -721,9 +802,9 @@ fun HomeScreen(
                 TextButton(onClick = {
                     onSavePlayerName(nameDraft.ifBlank { playerName })
                     showNameEditor = false
-                }) { Text("Save", color = accentStrong) }
+                }) { Text(stringResource(R.string.save), color = accentStrong) }
             },
-            dismissButton = { TextButton(onClick = { showNameEditor = false }) { Text("Cancel", color = OnCardText) } }
+            dismissButton = { TextButton(onClick = { showNameEditor = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
         )
     }
 }
@@ -783,10 +864,10 @@ fun InventoryScreen(
     ScalableScreen(modifier) { uiScale ->
         Column(verticalArrangement = Arrangement.spacedBy((6.dp * uiScale))) {
             ScalableHeader(stringResource(R.string.title_shop), uiScale, onOpenDrawer) {
-                Text("$gold G", color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.gold_value_short, gold), color = Color(0xFFFFD700), fontWeight = FontWeight.Bold)
                 Spacer(Modifier.width(6.dp))
                 IconButton(onClick = onOpenSettings) {
-                    Icon(Icons.Default.Settings, "Open settings", tint = OnCardText, modifier = Modifier.size(22.dp * uiScale))
+                    Icon(Icons.Default.Settings, stringResource(R.string.open_settings_desc), tint = OnCardIcon, modifier = Modifier.size(22.dp * uiScale))
                 }
             }
 
@@ -804,23 +885,23 @@ fun InventoryScreen(
                         }
                         Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("YOUR GOLD", color = OnCardText.copy(alpha = 0.55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
-                            Text("$gold G", color = Color(0xFFFFD700), fontSize = 20.sp, fontWeight = FontWeight.Black)
+                            Text(stringResource(R.string.l10n_your_gold), color = OnCardText.copy(alpha = 0.55f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
+                            Text(stringResource(R.string.gold_value_short, gold), color = Color(0xFFFFD700), fontSize = 20.sp, fontWeight = FontWeight.Black)
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text("${shopItems.size}", color = accentStrong, fontSize = 18.sp, fontWeight = FontWeight.Black)
-                            Text("ITEMS", color = OnCardText.copy(alpha = 0.5f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
+                            Text(stringResource(R.string.l10n_items), color = OnCardText.copy(alpha = 0.5f), fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.5.sp)
                         }
                     }
                 }
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text("Shop Catalog", color = accentStrong, fontWeight = FontWeight.Black, fontSize = 13.sp)
+                    Text(stringResource(R.string.shop_catalog), color = accentStrong, fontWeight = FontWeight.Black, fontSize = 13.sp)
                     IconButton(
                         onClick = {
                             if (customMode) {
                                 showCreateDialog = true
                             } else {
-                                Toast.makeText(context, "Enable Custom Mode in Settings to create or edit shop items.", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.shop_custom_mode_toast), Toast.LENGTH_SHORT).show()
                             }
                         },
                         modifier = Modifier.size(36.dp)
@@ -834,8 +915,7 @@ fun InventoryScreen(
                     }
                 }
                 if (!customMode) {
-                    Text(
-                        "Enable Custom Mode in Settings to add/edit shop items.",
+                    Text(stringResource(R.string.enable_custom_mode_shop),
                         color = OnCardText.copy(alpha = 0.65f),
                         fontSize = 12.sp
                     )
@@ -845,7 +925,7 @@ fun InventoryScreen(
                     CardBlock {
                         Box(modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp), contentAlignment = Alignment.Center) {
                             Text(
-                                if (customMode) "No shop items yet.\nTap + to add your first item." else "No shop items available right now.",
+                                if (customMode) stringResource(R.string.no_shop_items_custom) else stringResource(R.string.no_shop_items),
                                 color = OnCardText.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center
                             )
@@ -853,8 +933,7 @@ fun InventoryScreen(
                     }
                 } else {
                     if (showHoldHint && customMode) {
-                        Text(
-                            "Tip: hold item icon to edit or delete.",
+                        Text(stringResource(R.string.l10n_tip_hold_item_icon_to_edit_or_delete),
                             color = OnCardText.copy(alpha = 0.68f),
                             fontSize = 11.sp
                         )
@@ -902,31 +981,31 @@ fun InventoryScreen(
         AlertDialog(
             onDismissRequest = { pendingDeleteShopItem = null },
             containerColor = CardDarkBlue,
-            title = { Text("Delete Shop Item?", color = OnCardText, fontWeight = FontWeight.Bold) },
-            text = { Text("Remove '${pendingDeleteShopItem!!.name}' from shop catalog?", color = OnCardText.copy(alpha = 0.8f)) },
+            title = { Text(stringResource(R.string.delete_shop_item_title), color = OnCardText, fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.delete_shop_item_confirm, pendingDeleteShopItem!!.name), color = OnCardText.copy(alpha = 0.8f)) },
             confirmButton = {
                 TextButton(onClick = {
                     onDeleteShopItem(pendingDeleteShopItem!!.id)
                     pendingDeleteShopItem = null
-                }) { Text("Delete", color = Color.Red) }
+                }) { Text(stringResource(R.string.delete), color = Color.Red) }
             },
-            dismissButton = { TextButton(onClick = { pendingDeleteShopItem = null }) { Text("Cancel", color = OnCardText) } }
+            dismissButton = { TextButton(onClick = { pendingDeleteShopItem = null }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
         )
     }
     if (showTutorial) {
         CoachmarkOverlay(
             steps = listOf(
                 CoachStep(
-                    title = "Shop Catalog",
-                    body = "Tap an item icon to buy and auto-use it instantly.",
+                    title = stringResource(R.string.shop_catalog),
+                    body = stringResource(R.string.shop_catalog_hint),
                     panelAlignment = Alignment.TopStart,
                     pointerAlignment = Alignment.Center,
                     panelOffsetY = 38.dp,
                     pointerPosition = Offset(0.24f, 0.44f)
                 ),
                 CoachStep(
-                    title = "Edit Items",
-                    body = "In Custom Mode, hold an item icon to open edit/delete.",
+                    title = stringResource(R.string.shop_edit_items_title),
+                    body = stringResource(R.string.shop_edit_items_hint),
                     panelAlignment = Alignment.BottomStart,
                     pointerAlignment = Alignment.Center,
                     pointerPosition = Offset(0.42f, 0.44f)
@@ -1077,7 +1156,7 @@ fun ShopGridItemCard(
                 modifier = Modifier.background(CardDarkBlue)
             ) {
                 DropdownMenuItem(
-                    text = { Text("Edit", color = OnCardText) },
+                    text = { Text(stringResource(R.string.edit), color = OnCardText) },
                     leadingIcon = { Icon(Icons.Default.Edit, null, tint = accentStrong) },
                     onClick = {
                         showQuickActions = false
@@ -1085,7 +1164,7 @@ fun ShopGridItemCard(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("Delete", color = OnCardText) },
+                    text = { Text(stringResource(R.string.delete), color = OnCardText) },
                     leadingIcon = { Icon(Icons.Default.Delete, null, tint = MaterialTheme.colorScheme.error) },
                     onClick = {
                         showQuickActions = false
@@ -1189,7 +1268,7 @@ fun MainQuestsScreen(
     ScalableScreen(modifier) { uiScale ->
         Column(verticalArrangement = Arrangement.spacedBy((6.dp * uiScale))) {
             ScalableHeader(title = stringResource(R.string.title_main_quests), uiScale = uiScale, onOpenDrawer = onOpenDrawer, showMenu = true) {
-                IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, null, tint = OnCardText, modifier = Modifier.size(24.dp * uiScale)) }
+                IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, null, tint = OnCardIcon, modifier = Modifier.size(24.dp * uiScale)) }
             }
 
             LazyColumn(modifier = Modifier.weight(1f).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp), contentPadding = PaddingValues(bottom = 80.dp)) {
@@ -1200,9 +1279,9 @@ fun MainQuestsScreen(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text("No active main quests.\nGo to Quests & Templates to add one.", color = OnCardText.copy(alpha = 0.5f), textAlign = TextAlign.Center)
+                            Text(stringResource(R.string.l10n_no_active_main_quests_go_to_quests_templat), color = OnCardText.copy(alpha = 0.5f), textAlign = TextAlign.Center)
                             TextButton(onClick = onOpenCustomMainQuests) {
-                                Text("Open Custom Main Quests", color = accentStrong, fontWeight = FontWeight.Bold)
+                                Text(stringResource(R.string.open_custom_main_quests), color = accentStrong, fontWeight = FontWeight.Bold)
                             }
                         }
                     }
@@ -1218,7 +1297,7 @@ fun MainQuestsScreen(
                                     .padding(horizontal = 12.dp, vertical = 10.dp)
                             ) {
                                 Text(
-                                    "Chain auto-fix active: repaired ${chainDiagnostics.first} broken links and ignored ${chainDiagnostics.second} cross-family locks.",
+                                    stringResource(R.string.main_chain_autofix_msg, chainDiagnostics.first, chainDiagnostics.second),
                                     color = OnCardText.copy(alpha = 0.78f),
                                     fontSize = 12.sp
                                 )
@@ -1247,13 +1326,13 @@ fun MainQuestsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(CardDarkBlue.copy(alpha = 0.45f))
+                                    .background(CardDarkBlue.scaleAlpha(0.45f))
                                     .clickable { expanded = !expanded }
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    if (expanded) "Hide chain (${family.chain.size})" else "Show chain (${family.chain.size})",
+                                    if (expanded) stringResource(R.string.main_chain_hide_n, family.chain.size) else stringResource(R.string.main_chain_show_n, family.chain.size),
                                     color = OnCardText.copy(alpha = 0.78f),
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
@@ -1360,9 +1439,12 @@ fun JournalScreen(
     val safePages = remember(pages) { pages.ifEmpty { listOf(JournalPage(epochDayNow(), title = "", text = "")) } }
     val lightTheme = ThemeRuntime.currentTheme.isLightCategory()
     val defaultPageBg = if (lightTheme) Color.White else CardDarkBlue
-    val pageBg = journalPageColorOverride ?: defaultPageBg
+    val journalPageAlpha = (1f - ThemeRuntime.journalPageTransparencyPercent.coerceIn(0, 100) / 100f).coerceIn(0f, 1f)
+    val pageBgBase = journalPageColorOverride ?: defaultPageBg
+    val pageBg = pageBgBase.scaleAlpha(journalPageAlpha)
     val pageIsLight = pageBg.luminance() >= 0.52f
-    val journalAccent = journalAccentColorOverride ?: accentSoft
+    val journalAccentAlpha = (1f - ThemeRuntime.journalAccentTransparencyPercent.coerceIn(0, 100) / 100f).coerceIn(0f, 1f)
+    val journalAccent = (journalAccentColorOverride ?: accentSoft).scaleAlpha(journalAccentAlpha)
     val pageBorderColor = mixForBackground(journalAccent, pageBg).copy(alpha = if (pageIsLight) 0.58f else 0.42f)
     val journalNeonBrush = rememberNeonBorderBrush(journalAccent, neonPaletteColor(ThemeRuntime.neonGlowPalette, ThemeRuntime.neonLightBoostEnabled))
     val journalBorderWidth = if (ThemeRuntime.neonLightBoostEnabled) (2.4.dp) else (2.dp)
@@ -1373,7 +1455,7 @@ fun JournalScreen(
         listOf(
             fieldTint.copy(alpha = 0.96f),
             mixForBackground(fieldTint, pageBg).copy(alpha = 0.94f),
-            mixForBackground(fieldTint, CardDarkBlue).copy(alpha = 0.90f)
+            mixForBackground(fieldTint, pageBg).copy(alpha = 0.90f)
         )
     )
     val ribbonIconColor = readableTextColor(fieldTint)
@@ -1502,9 +1584,9 @@ fun JournalScreen(
                 onOpenDrawer = onOpenDrawer,
                 showMenu = true
             ) {
-                Text(text = if (showingCoverLabel) "Cover" else "${pageIndex.intValue + 1}/365", color = OnCardText.copy(alpha = 0.8f), fontSize = (12.sp * uiScale), fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
+                Text(text = if (showingCoverLabel) stringResource(R.string.journal_cover) else stringResource(R.string.journal_page_of, pageIndex.intValue + 1), color = OnCardText.copy(alpha = 0.8f), fontSize = (12.sp * uiScale), fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 8.dp))
                 IconButton(onClick = { showJournalNameEditor = true }) { Icon(Icons.Default.Edit, null, tint = OnCardText, modifier = Modifier.size(20.dp * uiScale)) }
-                IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, null, tint = OnCardText, modifier = Modifier.size(24.dp * uiScale)) }
+                IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, null, tint = OnCardIcon, modifier = Modifier.size(24.dp * uiScale)) }
             }
             Box(Modifier.weight(1f)) {
                 Column(
@@ -1520,7 +1602,7 @@ fun JournalScreen(
                 ) {
                     Box(modifier = Modifier.height(18.dp), contentAlignment = Alignment.CenterStart) {
                         if (isSaving.value) {
-                            Text("Saving...", color = fieldTint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.saving), color = fieldTint, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                             HorizontalPager(
@@ -1592,7 +1674,7 @@ fun JournalScreen(
                                                 value = page.title,
                                                 onValueChange = { setPage(index, page.copy(title = it.take(32), editedAtMillis = System.currentTimeMillis())) },
                                                 singleLine = true,
-                                                placeholder = { Text("Journal Title", color = fieldPlaceholder, fontSize = (18.sp * uiScale)) },
+                                                placeholder = { Text(stringResource(R.string.journal_title_hint), color = fieldPlaceholder, fontSize = (18.sp * uiScale)) },
                                                 textStyle = LocalTextStyle.current.copy(color = fieldText, fontSize = (18.sp * uiScale), fontWeight = FontWeight.Bold),
                                                 colors = OutlinedTextFieldDefaults.colors(
                                                     focusedBorderColor = fieldTint.copy(alpha = 0.35f),
@@ -1602,7 +1684,7 @@ fun JournalScreen(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 shape = RoundedCornerShape(14.dp)
                                             )
-                                            Spacer(Modifier.height(12.dp * uiScale))
+                                            Spacer(Modifier.height(6.dp * uiScale))
                                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
                                                 Button(
                                                     onClick = {
@@ -1613,13 +1695,15 @@ fun JournalScreen(
                                                             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                                         }
                                                     },
-                                                    colors = ButtonDefaults.buttonColors(containerColor = if (recordingPage == index) MaterialTheme.colorScheme.error else fieldTint)
+                                                    colors = ButtonDefaults.buttonColors(containerColor = if (recordingPage == index) MaterialTheme.colorScheme.error else fieldTint),
+                                                    modifier = Modifier.heightIn(min = 34.dp),
+                                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                                 ) {
                                                     val recordButtonColor = if (recordingPage == index) MaterialTheme.colorScheme.error else fieldTint
                                                     val recordContent = readableTextColor(recordButtonColor)
                                                     Icon(if (recordingPage == index) Icons.Default.Stop else Icons.Default.Mic, null, tint = recordContent)
                                                     Spacer(Modifier.width(6.dp))
-                                                    Text(if (recordingPage == index) "Stop Voice" else "Record Voice", color = recordContent, fontWeight = FontWeight.Bold)
+                                                    Text(if (recordingPage == index) stringResource(R.string.stop_voice) else stringResource(R.string.record_voice), color = recordContent, fontWeight = FontWeight.Bold, fontSize = (12.sp * uiScale))
                                                 }
                                                 if (voiceUris.isNotEmpty()) {
                                                     OutlinedButton(
@@ -1643,8 +1727,10 @@ fun JournalScreen(
                                                                 }
                                                                 playingUri = latest
                                                             }
-                                                        }
-                                                    ) { Text(if (playingUri == voiceUris.last()) "Stop Latest" else "Play Latest") }
+                                                        },
+                                                        modifier = Modifier.heightIn(min = 34.dp),
+                                                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                                    ) { Text(if (playingUri == voiceUris.last()) stringResource(R.string.stop_latest) else stringResource(R.string.play_latest), fontSize = (12.sp * uiScale)) }
                                                 }
                                             }
                                             if (voiceUris.isNotEmpty()) {
@@ -1685,17 +1771,17 @@ fun JournalScreen(
                                                                     }
                                                                     playingUri = uri
                                                                 }
-                                                            }) { Text(if (playingUri == uri) "Stop" else "Play") }
+                                                            }) { Text(if (playingUri == uri) stringResource(R.string.stop) else stringResource(R.string.play)) }
                                                             IconButton(onClick = {
                                                                 voiceNameTargetPage = index
                                                                 voiceNameTargetUri = uri
                                                                 voiceNameDraft = voiceNames[uri].orEmpty()
                                                                 showVoiceNameEditor = true
                                                             }) {
-                                                                Icon(Icons.Default.Edit, "Rename voice", tint = fieldText.copy(alpha = 0.8f))
+                                                                Icon(Icons.Default.Edit, stringResource(R.string.rename_voice), tint = fieldText.copy(alpha = 0.8f))
                                                             }
                                                             IconButton(onClick = { voiceToDeletePage = index; voiceToDeleteUri = uri }) {
-                                                                Icon(Icons.Default.Delete, "Remove voice", tint = MaterialTheme.colorScheme.error.copy(alpha = 0.9f))
+                                                                Icon(Icons.Default.Delete, stringResource(R.string.remove_voice), tint = MaterialTheme.colorScheme.error.copy(alpha = 0.9f))
                                                             }
                                                         }
                                                     }
@@ -1722,7 +1808,8 @@ fun JournalScreen(
                                             val isItalic = pageSpan?.italic == true
                                             val isUnderline = pageSpan?.underline == true
                                             val textColor = pageBlock.colorArgb?.let { Color(it.toInt()) } ?: fieldText
-                                            val textSize = (pageSpan?.fontScalePercent ?: pageBlock.fontScalePercent).coerceIn(80, 160)
+                                            val baseTextSize = pageBlock.fontScalePercent.coerceIn(80, 160)
+                                            val textSize = (pageSpan?.fontScalePercent ?: baseTextSize).coerceIn(80, 160)
                                             fun applySelectionSpan(nextBold: Boolean, nextItalic: Boolean, nextUnderline: Boolean) {
                                                 if (!hasSelection) return
                                                 val kept = pageBlock.spans.filter { it.end <= selStart || it.start >= selEnd }
@@ -1754,7 +1841,7 @@ fun JournalScreen(
                                                     )
                                                 )
                                             }
-                                            val spanVisual = remember(pageBlock.spans, textColor, textSize) {
+                                            val spanVisual = remember(pageBlock.spans, textColor, baseTextSize) {
                                                 VisualTransformation { input ->
                                                     val source = input.text
                                                     val b = AnnotatedString.Builder(source)
@@ -1765,7 +1852,7 @@ fun JournalScreen(
                                                             b.addStyle(
                                                                 SpanStyle(
                                                                     color = textColor,
-                                                                    fontSize = ((14f * (s.fontScalePercent ?: textSize).coerceIn(80, 160)) / 100f).sp,
+                                                                    fontSize = ((14f * (s.fontScalePercent ?: baseTextSize).coerceIn(80, 160)) / 100f).sp,
                                                                     fontWeight = if (s.bold) FontWeight.Bold else FontWeight.Normal,
                                                                     fontStyle = if (s.italic) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal,
                                                                     textDecoration = if (s.underline) androidx.compose.ui.text.style.TextDecoration.Underline else androidx.compose.ui.text.style.TextDecoration.None
@@ -1779,30 +1866,36 @@ fun JournalScreen(
                                                 }
                                             }
                                             Row(
-                                                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clip(RoundedCornerShape(12.dp))
+                                                    .border(1.dp, fieldTint.copy(alpha = 0.30f), RoundedCornerShape(12.dp))
+                                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                                                    .padding(bottom = 2.dp),
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                SmallActionPill(text = "B", enabled = true, accentSoft = if (isBold) fieldTint else SubtlePanel, onClick = {
+                                                SmallActionPill(text = "B", enabled = true, accentSoft = if (isBold) fieldTint else fieldTint.copy(alpha = 0.22f), onClick = {
                                                     applySelectionSpan(!isBold, isItalic, isUnderline)
                                                 })
-                                                SmallActionPill(text = "I", enabled = true, accentSoft = if (isItalic) fieldTint else SubtlePanel, onClick = {
+                                                SmallActionPill(text = "I", enabled = true, accentSoft = if (isItalic) fieldTint else fieldTint.copy(alpha = 0.22f), onClick = {
                                                     applySelectionSpan(isBold, !isItalic, isUnderline)
                                                 })
-                                                SmallActionPill(text = "U", enabled = true, accentSoft = if (isUnderline) fieldTint else SubtlePanel, onClick = {
+                                                SmallActionPill(text = "U", enabled = true, accentSoft = if (isUnderline) fieldTint else fieldTint.copy(alpha = 0.22f), onClick = {
                                                     applySelectionSpan(isBold, isItalic, !isUnderline)
                                                 })
                                                 Spacer(Modifier.weight(1f))
-                                                SmallActionPill(text = "A-", enabled = true, accentSoft = SubtlePanel, onClick = {
+                                                SmallActionPill(text = "-", enabled = true, accentSoft = fieldTint.copy(alpha = 0.22f), onClick = {
                                                     val next = (textSize - 2).coerceAtLeast(80)
                                                     applySelectionSize(next)
                                                 })
-                                                Text("${textSize}%", color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                SmallActionPill(text = "A+", enabled = true, accentSoft = fieldTint, onClick = {
+                                                Text(stringResource(R.string.value_percent, textSize), color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                SmallActionPill(text = "+", enabled = true, accentSoft = fieldTint, onClick = {
                                                     val next = (textSize + 2).coerceAtMost(160)
                                                     applySelectionSize(next)
                                                 })
                                             }
+                                            Spacer(Modifier.height(6.dp * uiScale))
                                             OutlinedTextField(
                                                 value = editorValue,
                                                 onValueChange = {
@@ -1826,11 +1919,11 @@ fun JournalScreen(
                                                 },
                                                 visualTransformation = spanVisual,
                                                 modifier = Modifier.fillMaxSize(),
-                                                placeholder = { Text("Write your notes...", color = fieldPlaceholder.copy(alpha = 0.85f), fontSize = (14.sp * uiScale)) },
+                                                placeholder = { Text(stringResource(R.string.journal_text_hint), color = fieldPlaceholder.copy(alpha = 0.85f), fontSize = (14.sp * uiScale)) },
                                                 textStyle = LocalTextStyle.current.copy(
                                                     color = textColor,
-                                                    fontSize = ((14f * textSize) / 100f).sp,
-                                                    lineHeight = ((20f * textSize) / 100f).sp,
+                                                    fontSize = ((14f * baseTextSize) / 100f).sp,
+                                                    lineHeight = ((20f * baseTextSize) / 100f).sp,
                                                     fontWeight = FontWeight.Normal,
                                                     fontStyle = androidx.compose.ui.text.font.FontStyle.Normal,
                                                     textDecoration = androidx.compose.ui.text.style.TextDecoration.None
@@ -1889,7 +1982,7 @@ fun JournalScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(12.dp))
-                                    .background(pageBg.copy(alpha = if (pageIsLight) 0.90f else 0.84f))
+                                    .background(pageBg.scaleAlpha(if (pageIsLight) 0.90f else 0.84f))
                                     .border(2.dp, pageBorderColor, RoundedCornerShape(12.dp))
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1902,11 +1995,11 @@ fun JournalScreen(
                                         pageIndex.intValue--
                                     }
                                 }, enabled = canPrev) {
-                                    Text("< Prev", color = if (canPrev) OnCardText else OnCardText.copy(alpha = 0.35f), fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.l10n_prev), color = if (canPrev) OnCardText else OnCardText.copy(alpha = 0.35f), fontWeight = FontWeight.Bold)
                                 }
-                                Text("${pageIndex.intValue + 1}/365", color = OnCardText.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                Text(stringResource(R.string.journal_page_of, pageIndex.intValue + 1), color = OnCardText.copy(alpha = 0.8f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                                     TextButton(onClick = { if (canNext) pageIndex.intValue++ }, enabled = canNext) {
-                                    Text("Next >", color = if (canNext) OnCardText else OnCardText.copy(alpha = 0.35f), fontWeight = FontWeight.Bold)
+                                    Text(stringResource(R.string.l10n_next), color = if (canNext) OnCardText else OnCardText.copy(alpha = 0.35f), fontWeight = FontWeight.Bold)
                                 }
                             }
                 }
@@ -1945,8 +2038,8 @@ fun JournalScreen(
                             ) {
                                 Text(journalName, color = fieldText, fontSize = (28.sp * uiScale), fontWeight = FontWeight.Black)
                                 Spacer(Modifier.height(10.dp))
-                                Text("Tap to open last page", color = fieldText.copy(alpha = 0.7f), fontSize = (14.sp * uiScale))
-                                Text("Page ${pageIndex.intValue + 1}", color = fieldTint, fontSize = (13.sp * uiScale), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                                Text(stringResource(R.string.journal_tap_hint), color = fieldText.copy(alpha = 0.7f), fontSize = (14.sp * uiScale))
+                                Text(stringResource(R.string.journal_page_n, pageIndex.intValue + 1), color = fieldTint, fontSize = (13.sp * uiScale), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
                             }
                         }
                     }
@@ -1957,13 +2050,13 @@ fun JournalScreen(
     if (showJournalNameEditor) {
         AlertDialog(
             onDismissRequest = { showJournalNameEditor = false },
-            title = { Text("Rename Journal", color = OnCardText, fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.rename_journal), color = OnCardText, fontWeight = FontWeight.Bold) },
             text = {
                 OutlinedTextField(
                     value = journalNameDraft,
                     onValueChange = { journalNameDraft = it.take(24) },
                     singleLine = true,
-                    label = { Text("Journal name") },
+                    label = { Text(stringResource(R.string.journal_name_label)) },
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = OnCardText,
                         unfocusedTextColor = OnCardText,
@@ -1975,26 +2068,26 @@ fun JournalScreen(
                 TextButton(onClick = {
                     onJournalNameChanged(journalNameDraft.trim().ifBlank { "Journal" })
                     showJournalNameEditor = false
-                }) { Text("Save", color = accentSoft) }
+                }) { Text(stringResource(R.string.save), color = accentSoft) }
             },
             dismissButton = {
-                TextButton(onClick = { showJournalNameEditor = false }) { Text("Cancel", color = OnCardText) }
+                TextButton(onClick = { showJournalNameEditor = false }) { Text(stringResource(R.string.cancel), color = OnCardText) }
             }
         )
     }
     if (showVoiceNameEditor && voiceNameTargetPage != null && !voiceNameTargetUri.isNullOrBlank()) {
         AlertDialog(
             onDismissRequest = { showVoiceNameEditor = false; voiceNameTargetPage = null; voiceNameTargetUri = null; voiceNameDraft = "" },
-            title = { Text("Rename Voice") },
+            title = { Text(stringResource(R.string.rename_voice)) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Set a custom name for this voice note.")
+                    Text(stringResource(R.string.rename_voice_dialog_desc))
                     OutlinedTextField(
                         value = voiceNameDraft,
                         onValueChange = { voiceNameDraft = it.take(32) },
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true,
-                        placeholder = { Text("Voice name") }
+                        placeholder = { Text(stringResource(R.string.voice_name_label)) }
                     )
                 }
             },
@@ -2019,16 +2112,16 @@ fun JournalScreen(
                     voiceNameTargetPage = null
                     voiceNameTargetUri = null
                     voiceNameDraft = ""
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.save)) }
             },
-            dismissButton = { TextButton(onClick = { showVoiceNameEditor = false; voiceNameTargetPage = null; voiceNameTargetUri = null; voiceNameDraft = "" }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { showVoiceNameEditor = false; voiceNameTargetPage = null; voiceNameTargetUri = null; voiceNameDraft = "" }) { Text(stringResource(R.string.cancel)) } }
         )
     }
     if (voiceToDeletePage != null && !voiceToDeleteUri.isNullOrBlank()) {
         AlertDialog(
             onDismissRequest = { voiceToDeletePage = null; voiceToDeleteUri = null },
-            title = { Text("Remove Voice Attachment?") },
-            text = { Text("This deletes this voice note from the page.") },
+            title = { Text(stringResource(R.string.remove_voice_title)) },
+            text = { Text(stringResource(R.string.remove_voice_desc)) },
             confirmButton = {
                 TextButton(onClick = {
                     val target = voiceToDeletePage
@@ -2054,9 +2147,9 @@ fun JournalScreen(
                             )
                         )
                     }
-                }) { Text("Remove", color = Color(0xFFE57373)) }
+                }) { Text(stringResource(R.string.remove), color = Color(0xFFE57373)) }
             },
-            dismissButton = { TextButton(onClick = { voiceToDeletePage = null; voiceToDeleteUri = null }) { Text("Cancel") } }
+            dismissButton = { TextButton(onClick = { voiceToDeletePage = null; voiceToDeleteUri = null }) { Text(stringResource(R.string.cancel)) } }
         )
     }
 }
@@ -2073,9 +2166,9 @@ fun StatsScreen(modifier: Modifier, levelInfo: LevelInfo, attributes: PlayerAttr
         Column(verticalArrangement = Arrangement.spacedBy((6.dp * uiScale))) {
             ScalableHeader(title = stringResource(R.string.title_stats), uiScale = uiScale, onOpenDrawer = onOpenDrawer)
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp * uiScale)) {
-                CardBlock { Text("Level", color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Text("Lv ${levelInfo.level}", color = accentStrong, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold); Spacer(Modifier.height(8.dp)); XpBar(levelInfo = levelInfo, accentStrong = accentStrong) }
-                CardBlock { Text("Attributes", color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Spacer(Modifier.height(8.dp)); AttributeRow("Strength", attributes.str); AttributeRow("Intellect", attributes.int); AttributeRow("Vitality", attributes.vit); AttributeRow("Endurance", attributes.end); AttributeRow("Faith", attributes.fth) }
-                CardBlock { Text("Last 7 days completion", color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Spacer(Modifier.height(8.dp)); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { repeat(7) { idx -> val item = last7.getOrNull(idx); val ok = item?.second?.allDone == true; Box(modifier = Modifier.size(18.dp).clip(RoundedCornerShape(6.dp)).background(if (ok) accentSoft else ProgressTrack)) }; Spacer(Modifier.width(8.dp)); Text("$completionRate%", color = accentStrong, fontWeight = FontWeight.Bold) } }
+                CardBlock { Text(stringResource(R.string.level), color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Text(stringResource(R.string.level_label, levelInfo.level), color = accentStrong, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold); Spacer(Modifier.height(8.dp)); XpBar(levelInfo = levelInfo, accentStrong = accentStrong) }
+                CardBlock { Text(stringResource(R.string.attributes), color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Spacer(Modifier.height(8.dp)); AttributeRow("Strength", attributes.str); AttributeRow("Intellect", attributes.int); AttributeRow("Vitality", attributes.vit); AttributeRow("Endurance", attributes.end); AttributeRow("Faith", attributes.fth) }
+                CardBlock { Text(stringResource(R.string.last_7_days), color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Spacer(Modifier.height(8.dp)); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { repeat(7) { idx -> val item = last7.getOrNull(idx); val ok = item?.second?.allDone == true; Box(modifier = Modifier.size(18.dp).clip(RoundedCornerShape(6.dp)).background(if (ok) accentSoft else ProgressTrack)) }; Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.value_percent, completionRate), color = accentStrong, fontWeight = FontWeight.Bold) } }
             }
         }
     }
@@ -2104,11 +2197,39 @@ fun CalendarScreen(
     var selectedDay by rememberSaveable { mutableLongStateOf(today) }
     var showAddPlanDialog by rememberSaveable { mutableStateOf(false) }
     var planTitleDraft by rememberSaveable { mutableStateOf("") }
-    var planTimeDraft by rememberSaveable { mutableStateOf("9:00 AM") }
+    var planHour by rememberSaveable { mutableIntStateOf(9) }
+    var planMinute by rememberSaveable { mutableIntStateOf(0) }
     var planNoteDraft by rememberSaveable { mutableStateOf("") }
     var planTypeExpanded by rememberSaveable { mutableStateOf(false) }
     var selectedPlanType by rememberSaveable { mutableStateOf("General") }
+    var planSoundEnabled by rememberSaveable { mutableStateOf(true) }
+    var planVibrationEnabled by rememberSaveable { mutableStateOf(true) }
+    var planSnoozeEnabled by rememberSaveable { mutableStateOf(false) }
+    var planReminderMinutes by rememberSaveable { mutableIntStateOf(0) }
     val planTypes = remember { listOf("General", "Workout", "Deep Work", "Hydrate", "Sleep", "Study") }
+    val reminderChoices = remember { listOf(0, 5, 10, 15, 30, 60) }
+    val reminderIndex = reminderChoices.indexOf(planReminderMinutes).let { if (it < 0) 0 else it }
+    val planSummaryReminder = stringResource(R.string.plan_summary_reminder)
+    val planSummarySound = stringResource(R.string.plan_summary_sound)
+    val planSummarySilent = stringResource(R.string.plan_summary_silent)
+    val planSummaryVibrate = stringResource(R.string.plan_summary_vibrate)
+    val planSummarySnooze = stringResource(R.string.plan_summary_snooze)
+    val formattedPlanTime = remember(planHour, planMinute) {
+        val amPm = if (planHour >= 12) "PM" else "AM"
+        val hour12 = when {
+            planHour == 0 -> 12
+            planHour > 12 -> planHour - 12
+            else -> planHour
+        }
+        String.format(java.util.Locale.getDefault(), "%d:%02d %s", hour12, planMinute, amPm)
+    }
+    fun shiftPlanTime(stepMinutes: Int) {
+        val totalMinutesInDay = 24 * 60
+        val current = (planHour * 60) + planMinute
+        val next = ((current + stepMinutes) % totalMinutesInDay + totalMinutesInDay) % totalMinutesInDay
+        planHour = next / 60
+        planMinute = next % 60
+    }
     val monthTitleText = remember(year, month) { monthTitle(year, month) }
     val grid = remember(year, month) { buildMonthGrid(year, month) }
     val visibleRows = remember(grid) {
@@ -2124,7 +2245,7 @@ fun CalendarScreen(
                 onOpenDrawer = onOpenDrawer,
                 endContent = {
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, "Open settings", tint = OnCardText, modifier = Modifier.size(24.dp * uiScale))
+                        Icon(Icons.Default.Settings, stringResource(R.string.open_settings_desc), tint = OnCardIcon, modifier = Modifier.size(24.dp * uiScale))
                     }
                 }
             )
@@ -2137,20 +2258,31 @@ fun CalendarScreen(
             ) {
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Text(monthTitleText, color = accentStrong, fontWeight = FontWeight.ExtraBold, fontSize = 20.sp, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { val (y, m) = prevMonth(year, month); year = y; month = m }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous month", tint = OnCardText) }
-                        TextButton(onClick = {
-                            val (y, m) = todayYmd()
+                        IconButton(onClick = {
+                            val (y, m) = prevMonth(year, month)
                             year = y
                             month = m
-                            selectedDay = today
-                        }) { Text("Today", color = OnCardText, fontWeight = FontWeight.Bold) }
-                        IconButton(onClick = { val (y, m) = nextMonth(year, month); year = y; month = m }) { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next month", tint = OnCardText) }
+                            selectedDay = epochDayFromYmd(y, m, 1)
+                        }) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.previous_month_desc), tint = OnCardText) }
+                        Text(
+                            monthTitleText,
+                            color = accentStrong,
+                            fontWeight = FontWeight.ExtraBold,
+                            fontSize = 20.sp,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f)
+                        )
+                        IconButton(onClick = {
+                            val (y, m) = nextMonth(year, month)
+                            year = y
+                            month = m
+                            selectedDay = epochDayFromYmd(y, m, 1)
+                        }) { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(R.string.next_month_desc), tint = OnCardText) }
                     }
                 }
                 item {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        listOf("Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat").forEach { dayLabel ->
+                        stringArrayResource(R.array.calendar_weekdays_short).forEach { dayLabel ->
                             Text(
                                 text = dayLabel,
                                 color = OnCardText.copy(alpha = 0.72f),
@@ -2215,10 +2347,10 @@ fun CalendarScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Plans for ${formatEpochDayFull(selectedDay)}", color = accentStrong, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text(stringResource(R.string.plans_for, formatEpochDayFull(selectedDay)), color = accentStrong, fontWeight = FontWeight.Bold, fontSize = 14.sp, modifier = Modifier.weight(1f))
                             FilledTonalIconButton(
                                 onClick = { showAddPlanDialog = true },
-                                modifier = Modifier.size(36.dp),
+                                modifier = Modifier.size(40.dp),
                                 colors = IconButtonDefaults.filledTonalIconButtonColors(
                                     containerColor = accentStrong.copy(alpha = 0.18f),
                                     contentColor = OnCardText
@@ -2227,14 +2359,14 @@ fun CalendarScreen(
                                 Icon(Icons.Default.Add, null, tint = OnCardText, modifier = Modifier.size(20.dp))
                             }
                         }
-                        Text("Tap + to add a plan for this day.", color = OnCardText.copy(alpha = 0.64f), fontSize = 12.sp)
+                        Text(stringResource(R.string.l10n_tap_to_add_a_plan_for_this_day), color = OnCardText.copy(alpha = 0.64f), fontSize = 12.sp)
                     }
                 }
                 item {
-                    Text("Plan", color = accentStrong, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                    Text(stringResource(R.string.l10n_plan), color = accentStrong, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                 }
                 if (selectedDayPlans.isEmpty()) {
-                    item { Text("No saved plans yet.", color = OnCardText.copy(alpha = 0.7f), fontSize = 12.sp) }
+                    item { Text(stringResource(R.string.no_saved_plans), color = OnCardText.copy(alpha = 0.7f), fontSize = 12.sp) }
                 } else {
                     items(selectedDayPlans.size) { idx ->
                         val plan = selectedDayPlans[idx]
@@ -2263,30 +2395,35 @@ fun CalendarScreen(
         AlertDialog(
             onDismissRequest = { showAddPlanDialog = false },
             containerColor = CardDarkBlue,
-            title = { Text("Add Plan", color = OnCardText, fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.l10n_add_plan), color = OnCardText, fontWeight = FontWeight.Bold) },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("For ${formatEpochDayFull(selectedDay)}", color = accentSoft, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(stringResource(R.string.for_day_value, formatEpochDayFull(selectedDay)), color = accentStrong.copy(alpha = 0.95f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     OutlinedTextField(
                         value = planTitleDraft,
                         onValueChange = { planTitleDraft = it.take(64) },
-                        label = { Text("Title") },
-                        singleLine = true
+                        label = { Text(stringResource(R.string.l10n_title)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                     )
-                    OutlinedTextField(
-                        value = planTimeDraft,
-                        onValueChange = { planTimeDraft = it.take(20) },
-                        label = { Text("Time") },
-                        singleLine = true
+                    OutlinedArrowControlField(
+                        label = "Time",
+                        valueLabel = formattedPlanTime,
+                        onPrev = { shiftPlanTime(-5) },
+                        onNext = { shiftPlanTime(5) },
+                        minHeight = 46.dp
                     )
                     ExposedDropdownMenuBox(expanded = planTypeExpanded, onExpandedChange = { planTypeExpanded = !planTypeExpanded }) {
                         OutlinedTextField(
                             value = selectedPlanType,
                             onValueChange = {},
                             readOnly = true,
-                            label = { Text("Type") },
+                            label = { Text(stringResource(R.string.l10n_type)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = planTypeExpanded) },
-                            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
+                            modifier = Modifier
+                                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                                .fillMaxWidth()
+                                .heightIn(min = 46.dp)
                         )
                         ExposedDropdownMenu(expanded = planTypeExpanded, onDismissRequest = { planTypeExpanded = false }) {
                             planTypes.forEach { type ->
@@ -2300,11 +2437,68 @@ fun CalendarScreen(
                             }
                         }
                     }
+                    Text(stringResource(R.string.l10n_options), color = OnCardText.copy(alpha = 0.72f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .border(1.dp, if (planSoundEnabled) accentStrong else OnCardText.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                                .background(if (planSoundEnabled) accentStrong.copy(alpha = 0.22f) else Color.Transparent)
+                                .clickable { planSoundEnabled = !planSoundEnabled },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (planSoundEnabled) Icon(Icons.Default.Check, null, tint = accentStrong, modifier = Modifier.size(12.dp))
+                        }
+                        Text(stringResource(R.string.l10n_alarm_sound), color = OnCardText.copy(alpha = 0.85f), modifier = Modifier.weight(1f), fontSize = 12.sp)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .border(1.dp, if (planVibrationEnabled) accentStrong else OnCardText.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                                .background(if (planVibrationEnabled) accentStrong.copy(alpha = 0.22f) else Color.Transparent)
+                                .clickable { planVibrationEnabled = !planVibrationEnabled },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (planVibrationEnabled) Icon(Icons.Default.Check, null, tint = accentStrong, modifier = Modifier.size(12.dp))
+                        }
+                        Text(stringResource(R.string.l10n_vibration), color = OnCardText.copy(alpha = 0.85f), modifier = Modifier.weight(1f), fontSize = 12.sp)
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .clip(RoundedCornerShape(4.dp))
+                                .border(1.dp, if (planSnoozeEnabled) accentStrong else OnCardText.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                                .background(if (planSnoozeEnabled) accentStrong.copy(alpha = 0.22f) else Color.Transparent)
+                                .clickable { planSnoozeEnabled = !planSnoozeEnabled },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (planSnoozeEnabled) Icon(Icons.Default.Check, null, tint = accentStrong, modifier = Modifier.size(12.dp))
+                        }
+                        Text(stringResource(R.string.l10n_snooze), color = OnCardText.copy(alpha = 0.85f), modifier = Modifier.weight(1f), fontSize = 12.sp)
+                    }
+                    OutlinedArrowControlField(
+                        label = "Reminder",
+                        valueLabel = if (planReminderMinutes == 0) stringResource(R.string.off_label) else stringResource(R.string.reminder_m_before, planReminderMinutes),
+                        onPrev = {
+                            val next = (reminderIndex - 1).coerceAtLeast(0)
+                            planReminderMinutes = reminderChoices[next]
+                        },
+                        onNext = {
+                            val next = (reminderIndex + 1).coerceAtMost(reminderChoices.lastIndex)
+                            planReminderMinutes = reminderChoices[next]
+                        },
+                        minHeight = 46.dp
+                    )
                     OutlinedTextField(
                         value = planNoteDraft,
                         onValueChange = { planNoteDraft = it.take(120) },
-                        label = { Text("Note") },
-                        maxLines = 2
+                        label = { Text(stringResource(R.string.l10n_note)) },
+                        maxLines = 2,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                     )
                 }
             },
@@ -2312,7 +2506,7 @@ fun CalendarScreen(
                 TextButton(onClick = {
                     val title = planTitleDraft.trim()
                     if (title.isNotBlank()) {
-                        val time = planTimeDraft.trim().ifBlank { "Any time" }
+                        val time = formattedPlanTime
                         val note = planNoteDraft.trim()
                         val packed = buildString {
                             append(time)
@@ -2320,6 +2514,16 @@ fun CalendarScreen(
                             append(selectedPlanType)
                             append(": ")
                             append(title)
+                            if (planReminderMinutes > 0) {
+                                append(" • ")
+                                append(planSummaryReminder)
+                                append(planReminderMinutes)
+                                append("m")
+                            }
+                            append(" • ")
+                            append(if (planSoundEnabled) planSummarySound else planSummarySilent)
+                            if (planVibrationEnabled) append(planSummaryVibrate)
+                            if (planSnoozeEnabled) append(planSummarySnooze)
                             if (note.isNotBlank()) {
                                 append(" • ")
                                 append(note)
@@ -2330,10 +2534,10 @@ fun CalendarScreen(
                         planNoteDraft = ""
                         showAddPlanDialog = false
                     }
-                }) { Text("Save", color = accentStrong, fontWeight = FontWeight.Bold) }
+                }) { Text(stringResource(R.string.save), color = accentStrong, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { showAddPlanDialog = false }) { Text("Cancel", color = OnCardText) }
+                TextButton(onClick = { showAddPlanDialog = false }) { Text(stringResource(R.string.cancel), color = OnCardText) }
             }
         )
     }
@@ -2341,23 +2545,23 @@ fun CalendarScreen(
         CoachmarkOverlay(
             steps = listOf(
                 CoachStep(
-                    title = "Pick Date",
-                    body = "Tap any day cell to set the active date.",
+                    title = stringResource(R.string.coach_calendar_pick_date_title),
+                    body = stringResource(R.string.coach_calendar_pick_date_body),
                     panelAlignment = Alignment.TopEnd,
                     pointerAlignment = Alignment.TopCenter,
                     panelOffsetY = 32.dp,
                     pointerPosition = Offset(0.52f, 0.34f)
                 ),
                 CoachStep(
-                    title = "Add Plan",
-                    body = "Use + in the Plans card to create a plan for selected date.",
+                    title = stringResource(R.string.coach_calendar_add_plan_title),
+                    body = stringResource(R.string.coach_calendar_add_plan_body),
                     panelAlignment = Alignment.CenterEnd,
                     pointerAlignment = Alignment.Center,
                     pointerPosition = Offset(0.90f, 0.58f)
                 ),
                 CoachStep(
-                    title = "Manage",
-                    body = "Your saved plans appear below. Tap trash to remove.",
+                    title = stringResource(R.string.coach_calendar_manage_title),
+                    body = stringResource(R.string.coach_calendar_manage_body),
                     panelAlignment = Alignment.BottomEnd,
                     pointerAlignment = Alignment.BottomCenter,
                     pointerPosition = Offset(0.52f, 0.78f)
@@ -2406,6 +2610,14 @@ fun SettingsScreen(
     appLanguage: String,
     backgroundImageUri: String?,
     backgroundImageTransparencyPercent: Int,
+    accentTransparencyPercent: Int,
+    textTransparencyPercent: Int,
+    appBgTransparencyPercent: Int,
+    chromeBgTransparencyPercent: Int,
+    cardBgTransparencyPercent: Int,
+    journalPageTransparencyPercent: Int,
+    journalAccentTransparencyPercent: Int,
+    buttonTransparencyPercent: Int,
     journalName: String,
     textColorOverride: Color?,
     appBackgroundColorOverride: Color?,
@@ -2450,6 +2662,14 @@ fun SettingsScreen(
     onTextColorChanged: (Color?) -> Unit,
     onBackgroundImageChanged: (String?) -> Unit,
     onBackgroundImageTransparencyPercentChanged: (Int) -> Unit,
+    onAccentTransparencyChanged: (Int) -> Unit,
+    onTextTransparencyChanged: (Int) -> Unit,
+    onAppBgTransparencyChanged: (Int) -> Unit,
+    onChromeBgTransparencyChanged: (Int) -> Unit,
+    onCardBgTransparencyChanged: (Int) -> Unit,
+    onJournalPageTransparencyChanged: (Int) -> Unit,
+    onJournalAccentTransparencyChanged: (Int) -> Unit,
+    onButtonTransparencyChanged: (Int) -> Unit,
     onAppBackgroundColorChanged: (Color?) -> Unit,
     onChromeBackgroundColorChanged: (Color?) -> Unit,
     onCardColorChanged: (Color?) -> Unit,
@@ -2467,7 +2687,7 @@ fun SettingsScreen(
     onSendFeedback: (String, String) -> Unit,
     onExportLogs: () -> Unit,
     onBuildAdvancedTemplateStarterJson: () -> String,
-    onBuildAdvancedTemplatePromptFromRequest: (String) -> String,
+    onBuildAdvancedTemplatePromptFromRequest: (String, Boolean) -> String,
     onImportAdvancedTemplateJson: (String) -> AdvancedTemplateImportResult,
     onApplyAdvancedTemplateByPackage: (String) -> Boolean,
     onRequestResetAll: () -> Unit,
@@ -2547,7 +2767,8 @@ fun SettingsScreen(
         var pendingThemeAccentArgb by rememberSaveable { mutableLongStateOf(0L) }
         var colorPickerTarget by rememberSaveable { mutableStateOf<String?>(null) }
         var showThemePresetDialog by rememberSaveable { mutableStateOf(false) }
-        var themeLabExpanded by rememberSaveable { mutableStateOf(false) }
+        var themeLabExpanded by rememberSaveable { mutableStateOf(ThemeRuntime.settingsThemeLabExpanded) }
+        var performanceWarningMessage by rememberSaveable { mutableStateOf<String?>(null) }
         var showFeedbackDialog by rememberSaveable { mutableStateOf(false) }
         var feedbackCategoryExpanded by rememberSaveable { mutableStateOf(false) }
         var feedbackCategory by rememberSaveable { mutableStateOf("General") }
@@ -2555,36 +2776,39 @@ fun SettingsScreen(
         var advancedTemplateJsonDraft by rememberSaveable { mutableStateOf("") }
         var advancedTemplateRequestDraft by rememberSaveable { mutableStateOf("") }
         var advancedTemplateGeneratedPrompt by rememberSaveable { mutableStateOf("") }
+        var advancedTemplateAllowThemeGeneration by rememberSaveable { mutableStateOf(false) }
         var backgroundMode by rememberSaveable(backgroundImageUri) { mutableStateOf(if (backgroundImageUri.isNullOrBlank()) "color" else "image") }
         val feedbackCategories = remember { listOf("Bug", "UI/UX", "Feature Request", "Performance", "General") }
         val tabGameplay = stringResource(R.string.tab_gameplay)
         val tabAppearance = stringResource(R.string.tab_appearance)
-        val tabAlerts = stringResource(R.string.tab_alerts)
-        val tabCloud = stringResource(R.string.tab_cloud)
-        val tabCreator = stringResource(R.string.tab_creator)
+        val tabHub = stringResource(R.string.tab_hub)
         val tabSafety = stringResource(R.string.tab_safety)
-        val tabAdvancedTemplates = "Templates"
-        val settingsTabs = remember(tabGameplay, tabAppearance, tabAlerts, tabCloud, tabCreator, tabSafety, tabAdvancedTemplates) {
+        val tabAdvancedTemplates = stringResource(R.string.tab_templates)
+        val settingsTabs = remember(tabGameplay, tabAppearance, tabHub, tabSafety, tabAdvancedTemplates) {
             listOf(
                 "gameplay" to tabGameplay,
                 "appearance" to tabAppearance,
-                "alerts" to tabAlerts,
-                "cloud" to tabCloud,
+                "hub" to tabHub,
                 "advanced_templates" to tabAdvancedTemplates,
-                "feedback" to tabCreator,
                 "data" to tabSafety
             )
         }
-        val initialSettingsPage = remember(settingsTabs, expandedSection) {
-            settingsTabs.indexOfFirst { it.first == expandedSection }.takeIf { it >= 0 } ?: 0
+        val normalizedExpandedSection = remember(expandedSection) {
+            when (expandedSection) {
+                "alerts", "cloud", "feedback" -> "hub"
+                else -> expandedSection
+            }
+        }
+        val initialSettingsPage = remember(settingsTabs, normalizedExpandedSection) {
+            settingsTabs.indexOfFirst { it.first == normalizedExpandedSection }.takeIf { it >= 0 } ?: 0
         }
         val settingsPagerState = rememberPagerState(initialPage = initialSettingsPage, pageCount = { settingsTabs.size })
         val settingsTabListState = rememberLazyListState()
         val settingsPagerScope = rememberCoroutineScope()
         val settingsTabProgress = (settingsPagerState.currentPage + settingsPagerState.currentPageOffsetFraction)
             .coerceIn(0f, settingsTabs.lastIndex.toFloat())
-        LaunchedEffect(expandedSection) {
-            val page = settingsTabs.indexOfFirst { it.first == expandedSection }
+        LaunchedEffect(normalizedExpandedSection) {
+            val page = settingsTabs.indexOfFirst { it.first == normalizedExpandedSection }
             if (page >= 0 && page != settingsPagerState.currentPage) {
                 settingsPagerState.scrollToPage(page)
             }
@@ -2594,6 +2818,9 @@ fun SettingsScreen(
             if (expandedSection != key) onExpandedSectionChanged(key)
             val tabTarget = (settingsPagerState.currentPage - 1).coerceAtLeast(0)
             settingsTabListState.animateScrollToItem(tabTarget)
+        }
+        LaunchedEffect(themeLabExpanded) {
+            ThemeRuntime.settingsThemeLabExpanded = themeLabExpanded
         }
         val themeCyberAccent = remember(neonLightBoost) { ThemeEngine.getColors(AppTheme.CYBERPUNK).first }
         val themeDarkBg = remember { ThemeEngine.getColors(AppTheme.DEFAULT).second }
@@ -2634,7 +2861,10 @@ fun SettingsScreen(
                     accent = Color(0xFF5C9DFF),
                     previewBg = Color(0xFF0C1118),
                     previewCard = Color(0xFF141D2C),
-                    previewText = Color(0xFFEAF0FA)
+                    previewText = Color(0xFFEAF0FA),
+                    appBgTransparency = 10,
+                    chromeBgTransparency = 8,
+                    cardBgTransparency = 6
                 ),
                 IntroStyleThemePreset(
                     id = "forest_steel",
@@ -2644,7 +2874,11 @@ fun SettingsScreen(
                     accent = Color(0xFF45B7A8),
                     previewBg = Color(0xFF0D1518),
                     previewCard = Color(0xFF162126),
-                    previewText = Color(0xFFE6F2F0)
+                    previewText = Color(0xFFE6F2F0),
+                    appBgTransparency = 16,
+                    chromeBgTransparency = 14,
+                    cardBgTransparency = 12,
+                    buttonTransparency = 8
                 ),
                 IntroStyleThemePreset(
                     id = "ashen_ember",
@@ -2654,7 +2888,10 @@ fun SettingsScreen(
                     accent = Color(0xFFB57A3E),
                     previewBg = Color(0xFF120F10),
                     previewCard = Color(0xFF1B1719),
-                    previewText = Color(0xFFE9E1D6)
+                    previewText = Color(0xFFE9E1D6),
+                    appBgTransparency = 5,
+                    chromeBgTransparency = 4,
+                    cardBgTransparency = 3
                 ),
                 IntroStyleThemePreset(
                     id = "moonlit_steel",
@@ -2664,7 +2901,11 @@ fun SettingsScreen(
                     accent = Color(0xFF6D86B3),
                     previewBg = Color(0xFF10141D),
                     previewCard = Color(0xFF171E2A),
-                    previewText = Color(0xFFE3EAF6)
+                    previewText = Color(0xFFE3EAF6),
+                    appBgTransparency = 22,
+                    chromeBgTransparency = 18,
+                    cardBgTransparency = 16,
+                    journalPageTransparency = 14
                 ),
                 IntroStyleThemePreset(
                     id = "mist_blue",
@@ -2674,7 +2915,11 @@ fun SettingsScreen(
                     accent = Color(0xFF3F7FC2),
                     previewBg = Color(0xFFF6F8FC),
                     previewCard = Color(0xFFFFFFFF),
-                    previewText = Color(0xFF1B2430)
+                    previewText = Color(0xFF1B2430),
+                    appBgTransparency = 0,
+                    chromeBgTransparency = 0,
+                    cardBgTransparency = 0,
+                    textTransparency = 0
                 ),
                 IntroStyleThemePreset(
                     id = "mint_light",
@@ -2684,7 +2929,10 @@ fun SettingsScreen(
                     accent = Color(0xFF2E9A86),
                     previewBg = Color(0xFFF4F9F6),
                     previewCard = Color(0xFFFFFFFF),
-                    previewText = Color(0xFF18252A)
+                    previewText = Color(0xFF18252A),
+                    appBgTransparency = 8,
+                    chromeBgTransparency = 6,
+                    cardBgTransparency = 5
                 ),
                 IntroStyleThemePreset(
                     id = "cyber_aqua",
@@ -2694,7 +2942,11 @@ fun SettingsScreen(
                     accent = Color(0xFF00F5D4),
                     previewBg = Color(0xFF090B1A),
                     previewCard = Color(0xFF141938),
-                    previewText = Color(0xFFEAF8FF)
+                    previewText = Color(0xFFEAF8FF),
+                    appBgTransparency = 38,
+                    chromeBgTransparency = 28,
+                    cardBgTransparency = 24,
+                    buttonTransparency = 15
                 ),
                 IntroStyleThemePreset(
                     id = "cyber_rose",
@@ -2704,7 +2956,13 @@ fun SettingsScreen(
                     accent = Color(0xFFFF4FAE),
                     previewBg = Color(0xFF090B1A),
                     previewCard = Color(0xFF171E43),
-                    previewText = Color(0xFFEAF8FF)
+                    previewText = Color(0xFFEAF8FF),
+                    appBgTransparency = 46,
+                    chromeBgTransparency = 34,
+                    cardBgTransparency = 30,
+                    textTransparency = 6,
+                    journalPageTransparency = 28,
+                    buttonTransparency = 20
                 )
             )
         }
@@ -2722,19 +2980,38 @@ fun SettingsScreen(
         }
         val advancedThemePresets = remember {
             listOf(
-                AdvancedThemePreset("Classic Dark", "Balanced dark with warm amber actions", Color(0xFFE8EAF0), Color(0xFF0E0F12), Color(0xFF111418), Color(0xFF111418), Color(0xFFB36A2E), Color(0xFF0C1015), Color(0xFFB36A2E)),
-                AdvancedThemePreset("Ocean Night", "Deep navy + aqua clarity", Color(0xFFDCEAF8), Color(0xFF102A43), Color(0xFF0F2238), Color(0xFF132A3E), Color(0xFF2B7A78), Color(0xFF0D1A2A), Color(0xFF4FC3F7)),
-                AdvancedThemePreset("Soft Light", "Clean light with subtle contrast", Color(0xFF1B2430), Color(0xFFF3F5F8), Color(0xFFEAF0F7), Color(0xFFFFFFFF), Color(0xFF1976D2), Color(0xFFF0E9DD), Color(0xFF7B5E3B)),
-                AdvancedThemePreset("Amber Forge", "Warm metal + ember accents", Color(0xFFECEFF4), Color(0xFF1F1310), Color(0xFF251814), Color(0xFF2A1B15), Color(0xFFEF6C00), Color(0xFF1B120E), Color(0xFFC77F37)),
-                AdvancedThemePreset("Neo Violet", "Cool dark with violet highlights", Color(0xFFDCEAF8), Color(0xFF0F1726), Color(0xFF121D30), Color(0xFF172335), Color(0xFF7E57C2), Color(0xFF10192A), Color(0xFF7E57C2)),
-                AdvancedThemePreset("Mint Day", "Fresh bright mint palette", Color(0xFF0E1A2B), Color(0xFFEAF5EC), Color(0xFFDFEEE3), Color(0xFFF7FCF8), Color(0xFF2E7D32), Color(0xFFF1F8F2), Color(0xFF2E7D32)),
-                AdvancedThemePreset("Sky Glass", "Light sky tones with crisp blue", Color(0xFF102A43), Color(0xFFE8F1FB), Color(0xFFDDEAF8), Color(0xFFFFFFFF), Color(0xFF1E88E5), Color(0xFFF3F8FE), Color(0xFF1976D2)),
-                AdvancedThemePreset("Aqua Tech", "Tech dark with aqua energy", Color(0xFFF4F7F9), Color(0xFF12202A), Color(0xFF152633), Color(0xFF192B3A), Color(0xFF00BFA5), Color(0xFF13222E), Color(0xFF00BFA5)),
-                AdvancedThemePreset("Cyberpunk Neon", "Neon pink + cyan on deep dark", Color(0xFFEAF8FF), Color(0xFF090B1A), Color(0xFF141938), Color(0xFF1A2050), Color(0xFF00F5D4), Color(0xFF101635), Color(0xFFFF2E97)),
-                AdvancedThemePreset("Neon Hyperlight", "Brighter neon glow with higher contrast", Color(0xFFF4FEFF), Color(0xFF0E1230), Color(0xFF171F48), Color(0xFF202A5E), Color(0xFF3FFFE8), Color(0xFF141C42), Color(0xFFFF5EB8)),
-                AdvancedThemePreset("Dark Souls Ember", "Ash dark with ember fire", Color(0xFFE6DED1), Color(0xFF14110F), Color(0xFF1A1513), Color(0xFF201915), Color(0xFFB36A2E), Color(0xFF171210), Color(0xFFC77F37)),
-                AdvancedThemePreset("Blood Moon", "Crimson night with high intensity", Color(0xFFF3E9EA), Color(0xFF170E12), Color(0xFF1D1117), Color(0xFF24141C), Color(0xFFE53935), Color(0xFF1A0F14), Color(0xFFFF6B6B)),
-                AdvancedThemePreset("Emerald Ruins", "Ancient green stone vibe", Color(0xFFE9F3EE), Color(0xFF101712), Color(0xFF142019), Color(0xFF1A2A22), Color(0xFF2E7D32), Color(0xFF111A14), Color(0xFF66BB6A))
+                AdvancedThemePreset("Classic Dark", "Balanced dark with warm amber actions", Color(0xFFE8EAF0), Color(0xFF0E0F12), Color(0xFF111418), Color(0xFF111418), Color(0xFFB36A2E), Color(0xFF0C1015), Color(0xFFB36A2E), appBgTransparency = 8, chromeBgTransparency = 8, cardBgTransparency = 6),
+                AdvancedThemePreset("Ocean Night", "Deep navy + aqua clarity", Color(0xFFDCEAF8), Color(0xFF102A43), Color(0xFF0F2238), Color(0xFF132A3E), Color(0xFF2B7A78), Color(0xFF0D1A2A), Color(0xFF4FC3F7), appBgTransparency = 24, chromeBgTransparency = 20, cardBgTransparency = 18, buttonTransparency = 8),
+                AdvancedThemePreset("Soft Light", "Clean light with subtle contrast", Color(0xFF1B2430), Color(0xFFF3F5F8), Color(0xFFEAF0F7), Color(0xFFFFFFFF), Color(0xFF1976D2), Color(0xFFF0E9DD), Color(0xFF7B5E3B), appBgTransparency = 0, chromeBgTransparency = 0, cardBgTransparency = 0, buttonTransparency = 0),
+                AdvancedThemePreset("Amber Forge", "Warm metal + ember accents", Color(0xFFECEFF4), Color(0xFF1F1310), Color(0xFF251814), Color(0xFF2A1B15), Color(0xFFEF6C00), Color(0xFF1B120E), Color(0xFFC77F37), appBgTransparency = 12, chromeBgTransparency = 10, cardBgTransparency = 8),
+                AdvancedThemePreset("Neo Violet", "Cool dark with violet highlights", Color(0xFFDCEAF8), Color(0xFF0F1726), Color(0xFF121D30), Color(0xFF172335), Color(0xFF7E57C2), Color(0xFF10192A), Color(0xFF7E57C2), appBgTransparency = 28, chromeBgTransparency = 24, cardBgTransparency = 20, journalPageTransparency = 18),
+                AdvancedThemePreset("Mint Day", "Fresh bright mint palette", Color(0xFF0E1A2B), Color(0xFFEAF5EC), Color(0xFFDFEEE3), Color(0xFFF7FCF8), Color(0xFF2E7D32), Color(0xFFF1F8F2), Color(0xFF2E7D32), appBgTransparency = 10, chromeBgTransparency = 8, cardBgTransparency = 6),
+                AdvancedThemePreset("Sky Glass", "Light sky tones with crisp blue", Color(0xFF102A43), Color(0xFFE8F1FB), Color(0xFFDDEAF8), Color(0xFFFFFFFF), Color(0xFF1E88E5), Color(0xFFF3F8FE), Color(0xFF1976D2), appBgTransparency = 34, chromeBgTransparency = 26, cardBgTransparency = 22, buttonTransparency = 12),
+                AdvancedThemePreset("Aqua Tech", "Tech dark with aqua energy", Color(0xFFF4F7F9), Color(0xFF12202A), Color(0xFF152633), Color(0xFF192B3A), Color(0xFF00BFA5), Color(0xFF13222E), Color(0xFF00BFA5), appBgTransparency = 30, chromeBgTransparency = 24, cardBgTransparency = 20),
+                AdvancedThemePreset("Cyberpunk Neon", "Neon pink + cyan on deep dark", Color(0xFFEAF8FF), Color(0xFF090B1A), Color(0xFF141938), Color(0xFF1A2050), Color(0xFF00F5D4), Color(0xFF101635), Color(0xFFFF2E97), appBgTransparency = 42, chromeBgTransparency = 32, cardBgTransparency = 28, textTransparency = 4, buttonTransparency = 18),
+                AdvancedThemePreset("Neon Hyperlight", "Brighter neon glow with higher contrast", Color(0xFFF4FEFF), Color(0xFF0E1230), Color(0xFF171F48), Color(0xFF202A5E), Color(0xFF3FFFE8), Color(0xFF141C42), Color(0xFFFF5EB8), appBgTransparency = 48, chromeBgTransparency = 36, cardBgTransparency = 32, buttonTransparency = 20),
+                AdvancedThemePreset("Dark Souls Ember", "Ash dark with ember fire", Color(0xFFE6DED1), Color(0xFF14110F), Color(0xFF1A1513), Color(0xFF201915), Color(0xFFB36A2E), Color(0xFF171210), Color(0xFFC77F37), appBgTransparency = 6, chromeBgTransparency = 5, cardBgTransparency = 4),
+                AdvancedThemePreset("Blood Moon", "Crimson night with high intensity", Color(0xFFF3E9EA), Color(0xFF170E12), Color(0xFF1D1117), Color(0xFF24141C), Color(0xFFE53935), Color(0xFF1A0F14), Color(0xFFFF6B6B), appBgTransparency = 16, chromeBgTransparency = 12, cardBgTransparency = 10, buttonTransparency = 6),
+                AdvancedThemePreset("Emerald Ruins", "Ancient green stone vibe", Color(0xFFE9F3EE), Color(0xFF101712), Color(0xFF142019), Color(0xFF1A2A22), Color(0xFF2E7D32), Color(0xFF111A14), Color(0xFF66BB6A), appBgTransparency = 20, chromeBgTransparency = 16, cardBgTransparency = 14),
+                AdvancedThemePreset(
+                    name = "Glass Drift",
+                    subtitle = "Transparent glass layers over scenic backgrounds",
+                    text = Color(0xFFEAF8FF),
+                    appBg = Color(0xFF0A1220),
+                    chromeBg = Color(0xFF0D1A2A),
+                    cardBg = Color(0xFF132238),
+                    button = Color(0xFF3FC7FF),
+                    journalPage = Color(0xFF112035),
+                    journalAccent = Color(0xFF73E6FF),
+                    accentTransparency = 15,
+                    textTransparency = 10,
+                    appBgTransparency = 88,
+                    chromeBgTransparency = 72,
+                    cardBgTransparency = 68,
+                    journalPageTransparency = 74,
+                    journalAccentTransparency = 18,
+                    buttonTransparency = 30
+                )
             )
         }
         val advancedColoringEnabled = textColorOverride != null ||
@@ -2758,7 +3035,15 @@ fun SettingsScreen(
             cardBg: Color?,
             button: Color?,
             journalPage: Color?,
-            journalAccent: Color?
+            journalAccent: Color?,
+            accentTransparency: Int? = null,
+            textTransparency: Int? = null,
+            appBgTransparency: Int? = null,
+            chromeBgTransparency: Int? = null,
+            cardBgTransparency: Int? = null,
+            journalPageTransparency: Int? = null,
+            journalAccentTransparency: Int? = null,
+            buttonTransparency: Int? = null
         ) {
             onTextColorChanged(text)
             onAppBackgroundColorChanged(appBg)
@@ -2767,6 +3052,14 @@ fun SettingsScreen(
             onButtonColorChanged(button)
             onJournalPageColorChanged(journalPage)
             onJournalAccentColorChanged(journalAccent)
+            accentTransparency?.let(onAccentTransparencyChanged)
+            textTransparency?.let(onTextTransparencyChanged)
+            appBgTransparency?.let(onAppBgTransparencyChanged)
+            chromeBgTransparency?.let(onChromeBgTransparencyChanged)
+            cardBgTransparency?.let(onCardBgTransparencyChanged)
+            journalPageTransparency?.let(onJournalPageTransparencyChanged)
+            journalAccentTransparency?.let(onJournalAccentTransparencyChanged)
+            buttonTransparency?.let(onButtonTransparencyChanged)
         }
         val cardSpacing = (10.dp * uiScale).coerceIn(8.dp, 14.dp)
         val settingsDrawerSwipeThresholdPx = with(LocalDensity.current) { 22.dp.toPx() }
@@ -2785,7 +3078,7 @@ fun SettingsScreen(
                             if (page >= 0) settingsPagerState.animateScrollToPage(page)
                         }
                     }) {
-                        Icon(Icons.Default.AutoAwesome, "Open Advanced Template", tint = accentStrong, modifier = Modifier.size(22.dp * uiScale))
+                        Icon(Icons.Default.AutoAwesome, stringResource(R.string.open_advanced_template_desc), tint = accentStrong, modifier = Modifier.size(22.dp * uiScale))
                     }
                 }
             )
@@ -2941,23 +3234,58 @@ fun SettingsScreen(
                                     val appliedPageIndex = introStyleThemePresets.indexOfFirst { it.id == selectedIntroStylePreset.id }.coerceAtLeast(0)
                                     val allCount = introCount + advancedThemePresets.size
                                     val themeLoopStart = (Int.MAX_VALUE / 2 / allCount) * allCount
-                                    val presetPagerState = rememberPagerState(initialPage = themeLoopStart + appliedPageIndex) { Int.MAX_VALUE }
+                                    val rememberedPresetIndex = ThemeRuntime.settingsThemePresetIndex.takeIf { it in 0 until allCount } ?: appliedPageIndex
+                                    val presetPagerState = rememberPagerState(initialPage = themeLoopStart + rememberedPresetIndex) { Int.MAX_VALUE }
                                     var themeSkipFirst by remember { mutableStateOf(true) }
                                     LaunchedEffect(presetPagerState.settledPage) {
                                         if (themeSkipFirst) { themeSkipFirst = false; return@LaunchedEffect }
                                         val ap = presetPagerState.settledPage % allCount
+                                        ThemeRuntime.settingsThemePresetIndex = ap
                                         if (ap < introCount) {
                                             val p = introStyleThemePresets[ap]
                                             onThemeChanged(p.theme); onAccentChanged(p.accent)
-                                            applyAdvancedExample(p.previewText, p.previewBg, p.previewBg, p.previewCard, p.accent, p.previewCard, p.accent)
+                                            applyAdvancedExample(
+                                                p.previewText,
+                                                p.previewBg,
+                                                p.previewBg,
+                                                p.previewCard,
+                                                p.accent,
+                                                p.previewCard,
+                                                p.accent,
+                                                accentTransparency = p.accentTransparency,
+                                                textTransparency = p.textTransparency,
+                                                appBgTransparency = p.appBgTransparency,
+                                                chromeBgTransparency = p.chromeBgTransparency,
+                                                cardBgTransparency = p.cardBgTransparency,
+                                                journalPageTransparency = p.journalPageTransparency,
+                                                journalAccentTransparency = p.journalAccentTransparency,
+                                                buttonTransparency = p.buttonTransparency
+                                            )
                                         } else {
                                             val p = advancedThemePresets[ap - introCount]
-                                            applyAdvancedExample(p.text, p.appBg, p.chromeBg, p.cardBg, p.button, p.journalPage, p.journalAccent)
+                                            applyAdvancedExample(
+                                                p.text,
+                                                p.appBg,
+                                                p.chromeBg,
+                                                p.cardBg,
+                                                p.button,
+                                                p.journalPage,
+                                                p.journalAccent,
+                                                accentTransparency = p.accentTransparency,
+                                                textTransparency = p.textTransparency,
+                                                appBgTransparency = p.appBgTransparency,
+                                                chromeBgTransparency = p.chromeBgTransparency,
+                                                cardBgTransparency = p.cardBgTransparency,
+                                                journalPageTransparency = p.journalPageTransparency,
+                                                journalAccentTransparency = p.journalAccentTransparency,
+                                                buttonTransparency = p.buttonTransparency
+                                            )
                                         }
                                     }
                                     val themeFling = PagerDefaults.flingBehavior(state = presetPagerState, snapAnimationSpec = spring(stiffness = Spring.StiffnessHigh))
                                     HorizontalPager(state = presetPagerState, modifier = Modifier.fillMaxWidth(), flingBehavior = themeFling) { page ->
                                         val ap = page % allCount
+                                        val activePresetIndex = presetPagerState.settledPage % allCount
                                         val tName: String; val tSubtitle: String
                                         val tTextColor: Color; val tAppBg: Color; val tChromeBg: Color
                                         val tCardBg: Color; val tButton: Color
@@ -2968,14 +3296,14 @@ fun SettingsScreen(
                                             tTextColor = p.previewText; tAppBg = p.previewBg; tChromeBg = p.previewBg
                                             tCardBg = p.previewCard; tButton = p.accent
                                             tJournalPage = p.previewCard; tJournalAccent = p.accent
-                                            tIsActive = ap == appliedPageIndex
+                                            tIsActive = ap == activePresetIndex
                                         } else {
                                             val p = advancedThemePresets[ap - introCount]
                                             tName = p.name; tSubtitle = p.subtitle
                                             tTextColor = p.text; tAppBg = p.appBg; tChromeBg = p.chromeBg
                                             tCardBg = p.cardBg; tButton = p.button
                                             tJournalPage = p.journalPage; tJournalAccent = p.journalAccent
-                                            tIsActive = false
+                                            tIsActive = ap == activePresetIndex
                                         }
                                         Column(
                                             modifier = Modifier
@@ -3008,11 +3336,32 @@ fun SettingsScreen(
                                                 }
                                                 if (tIsActive) {
                                                     Box(modifier = Modifier.clip(RoundedCornerShape(99.dp)).background(tButton.copy(alpha = 0.22f)).padding(horizontal = 6.dp, vertical = 2.dp)) {
-                                                        Text("Active", color = tButton, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                                        Text(stringResource(R.string.l10n_active), color = tButton, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                                                     }
                                                 }
                                             }
                                         }
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 6.dp)
+                                            .clip(RoundedCornerShape(10.dp))
+                                            .background(
+                                                Brush.verticalGradient(
+                                                    listOf(
+                                                        Color.Transparent,
+                                                        OnCardText.copy(alpha = 0.08f)
+                                                    )
+                                                )
+                                            )
+                                            .padding(vertical = 6.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(stringResource(R.string.l10n_tap_or_swipe_to_change_presets),
+                                            color = OnCardText.copy(alpha = 0.72f),
+                                            fontSize = 11.sp
+                                        )
                                     }
                                     SettingsDivider()
                                     SettingsSubheading(stringResource(R.string.settings_accent))
@@ -3034,7 +3383,7 @@ fun SettingsScreen(
                                                 backgroundMode = "image"
                                                 onAppBackgroundColorChanged(null)
                                             },
-                                            label = { Text("Image") }
+                                            label = { Text(stringResource(R.string.l10n_image)) }
                                         )
                                         FilterChip(
                                             selected = backgroundMode == "color",
@@ -3042,8 +3391,28 @@ fun SettingsScreen(
                                                 backgroundMode = "color"
                                                 onBackgroundImageChanged(null)
                                             },
-                                            label = { Text("Color") }
+                                            label = { Text(stringResource(R.string.l10n_color)) }
                                         )
+                                    }
+                                    if (backgroundMode == "image") {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.WarningAmber,
+                                                contentDescription = null,
+                                                tint = Color(0xFFE57373),
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Text(stringResource(R.string.l10n_image_backgrounds_can_reduce_performance_o),
+                                                color = OnCardText.copy(alpha = 0.72f),
+                                                fontSize = 11.sp
+                                            )
+                                        }
                                     }
                                     Spacer(Modifier.height(10.dp))
                                     if (backgroundMode == "image") {
@@ -3082,8 +3451,8 @@ fun SettingsScreen(
                                                     .clickable { colorPickerTarget = "app_bg" }
                                             )
                                             Column(modifier = Modifier.weight(1f)) {
-                                                Text("Background color", color = OnCardText, fontSize = 12.sp)
-                                                Text("Tap swatch to pick", color = OnCardText.copy(alpha = 0.6f), fontSize = 11.sp)
+                                                Text(stringResource(R.string.l10n_background_color), color = OnCardText, fontSize = 12.sp)
+                                                Text(stringResource(R.string.l10n_tap_swatch_to_pick), color = OnCardText.copy(alpha = 0.6f), fontSize = 11.sp)
                                             }
                                             if (appBackgroundColorOverride != null) {
                                                 TextButton(onClick = { SoundManager.playClick(); onAppBackgroundColorChanged(null) }) { Text(stringResource(R.string.clear), color = Color(0xFFE57373)) }
@@ -3097,8 +3466,8 @@ fun SettingsScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Text("Background transparency", color = OnCardText, fontSize = 12.sp)
-                                            Text("${backgroundImageTransparencyPercent.coerceIn(0, 100)}%", color = OnCardText.copy(alpha = 0.75f), fontSize = 11.sp)
+                                            Text(stringResource(R.string.l10n_image_transparency), color = OnCardText, fontSize = 12.sp)
+                                            Text(stringResource(R.string.value_percent, backgroundImageTransparencyPercent.coerceIn(0, 100)), color = OnCardText.copy(alpha = 0.75f), fontSize = 11.sp)
                                         }
                                         Slider(
                                             value = backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f,
@@ -3150,9 +3519,12 @@ fun SettingsScreen(
                                 CardBlock {
                                     SettingsSubheading(stringResource(R.string.settings_motion))
                                     SettingsHint(stringResource(R.string.settings_motion_hint))
+                                    val neonDisabledMessage = "Enable Neon borders first."
                                     SettingRow(
                                         title = stringResource(R.string.settings_neon_borders),
                                         value = neonFlowEnabled,
+                                        onInfoClick = { performanceWarningMessage = "Neon borders use continuous animated effects and can reduce battery life on lower-end devices." },
+                                        warningInfo = true,
                                         onChange = { enabled ->
                                             onNeonFlowEnabledChanged(enabled)
                                             onDecorativeBordersChanged(enabled)
@@ -3160,12 +3532,24 @@ fun SettingsScreen(
                                     )
                                     val paletteIdx = neonPaletteOptions.indexOfFirst { it.first.equals(neonGlowPalette, ignoreCase = true) }.coerceAtLeast(0)
                                     SettingsSelectorRow(
-                                        title = "Neon Style",
+                                        title = stringResource(R.string.settings_neon_style),
                                         valueLabel = neonPaletteOptions[paletteIdx].second,
+                                        enabled = neonFlowEnabled,
+                                        onInfoClick = { performanceWarningMessage = "Some neon styles are more GPU-intensive due to glow rendering and gradients." },
+                                        warningInfo = true,
+                                        onDisabledControlClick = { performanceWarningMessage = neonDisabledMessage },
                                         onPrev = { onNeonGlowPaletteChanged(neonPaletteOptions[(paletteIdx - 1 + neonPaletteOptions.size) % neonPaletteOptions.size].first) },
                                         onNext = { onNeonGlowPaletteChanged(neonPaletteOptions[(paletteIdx + 1) % neonPaletteOptions.size].first) }
                                     )
-                                    SettingRow(stringResource(R.string.settings_neon_boost), neonLightBoost, onNeonLightBoostChanged)
+                                    SettingRow(
+                                        title = stringResource(R.string.settings_neon_boost),
+                                        value = neonLightBoost,
+                                        onChange = onNeonLightBoostChanged,
+                                        enabled = neonFlowEnabled,
+                                        onInfoClick = { performanceWarningMessage = "Neon light boost increases glow intensity and may reduce performance or increase battery usage." },
+                                        warningInfo = true,
+                                        onDisabledControlClick = { performanceWarningMessage = neonDisabledMessage }
+                                    )
                                     SettingsSubheading(stringResource(R.string.settings_neon_speed))
                                     SettingsHint(stringResource(R.string.settings_neon_speed_hint))
                                     val speedSlow = stringResource(R.string.settings_speed_slow)
@@ -3178,6 +3562,10 @@ fun SettingsScreen(
                                             2 -> speedFast
                                             else -> speedSmooth
                                         },
+                                        enabled = neonFlowEnabled,
+                                        onInfoClick = { performanceWarningMessage = "Higher neon speed updates animation more often and can increase GPU/CPU usage." },
+                                        warningInfo = true,
+                                        onDisabledControlClick = { performanceWarningMessage = neonDisabledMessage },
                                         onDecrement = { onNeonFlowSpeedChanged((neonFlowSpeed - 1).coerceIn(0, 2)) },
                                         onIncrement = { onNeonFlowSpeedChanged((neonFlowSpeed + 1).coerceIn(0, 2)) }
                                     )
@@ -3206,11 +3594,14 @@ fun SettingsScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(12.dp))
-                                            .clickable { themeLabExpanded = !themeLabExpanded }
+                                            .clickable {
+                                                themeLabExpanded = !themeLabExpanded
+                                                ThemeRuntime.settingsThemeLabExpanded = themeLabExpanded
+                                            }
                                             .padding(vertical = 4.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("Theme Lab", color = OnCardText.copy(alpha = 0.8f), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                                        Text(stringResource(R.string.tab_theme_lab), color = OnCardText.copy(alpha = 0.8f), fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                                         Icon(
                                             if (themeLabExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
                                             null,
@@ -3220,13 +3611,26 @@ fun SettingsScreen(
                                     AnimatedVisibility(visible = themeLabExpanded) {
                                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                             SettingsHint(stringResource(R.string.settings_advanced_color_hint))
+                                            SettingsSubheading(stringResource(R.string.settings_accent))
+                                            ColorPickerControlRow(
+                                                label = stringResource(R.string.settings_accent_color),
+                                                value = accentStrong,
+                                                onAuto = { onAccentChanged(themeDefaultAccent) },
+                                                onPick = { colorPickerTarget = "accent" },
+                                                autoLabel = stringResource(R.string.settings_theme_default),
+                                                transparencyPercent = accentTransparencyPercent,
+                                                onTransparencyChanged = onAccentTransparencyChanged
+                                            )
+                                            Spacer(Modifier.height(6.dp))
                                             SettingsSubheading(stringResource(R.string.settings_typography_colors))
                                             SettingsHint(stringResource(R.string.settings_typography_colors_hint))
                                             ColorPickerControlRow(
                                                 label = stringResource(R.string.settings_color_primary_text),
                                                 value = textColorOverride,
                                                 onAuto = { onTextColorChanged(null) },
-                                                onPick = { colorPickerTarget = "text" }
+                                                onPick = { colorPickerTarget = "text" },
+                                                transparencyPercent = textTransparencyPercent,
+                                                onTransparencyChanged = onTextTransparencyChanged
                                             )
                                             Spacer(Modifier.height(6.dp))
                                             SettingsSubheading(stringResource(R.string.settings_surface_colors))
@@ -3235,19 +3639,25 @@ fun SettingsScreen(
                                                 label = stringResource(R.string.settings_color_app_bg),
                                                 value = appBackgroundColorOverride,
                                                 onAuto = { onAppBackgroundColorChanged(null) },
-                                                onPick = { colorPickerTarget = "app_bg" }
+                                                onPick = { colorPickerTarget = "app_bg" },
+                                                transparencyPercent = appBgTransparencyPercent,
+                                                onTransparencyChanged = onAppBgTransparencyChanged
                                             )
                                             ColorPickerControlRow(
                                                 label = stringResource(R.string.settings_color_drawer_nav),
                                                 value = chromeBackgroundColorOverride,
                                                 onAuto = { onChromeBackgroundColorChanged(null) },
-                                                onPick = { colorPickerTarget = "chrome_bg" }
+                                                onPick = { colorPickerTarget = "chrome_bg" },
+                                                transparencyPercent = chromeBgTransparencyPercent,
+                                                onTransparencyChanged = onChromeBgTransparencyChanged
                                             )
                                             ColorPickerControlRow(
                                                 label = stringResource(R.string.settings_color_cards),
                                                 value = cardColorOverride,
                                                 onAuto = { onCardColorChanged(null) },
-                                                onPick = { colorPickerTarget = "card_bg" }
+                                                onPick = { colorPickerTarget = "card_bg" },
+                                                transparencyPercent = cardBgTransparencyPercent,
+                                                onTransparencyChanged = onCardBgTransparencyChanged
                                             )
                                             Spacer(Modifier.height(6.dp))
                                             SettingsSubheading(stringResource(R.string.settings_journal_colors))
@@ -3256,13 +3666,17 @@ fun SettingsScreen(
                                                 label = stringResource(R.string.settings_color_journal_page),
                                                 value = journalPageColorOverride,
                                                 onAuto = { onJournalPageColorChanged(null) },
-                                                onPick = { colorPickerTarget = "journal_page" }
+                                                onPick = { colorPickerTarget = "journal_page" },
+                                                transparencyPercent = journalPageTransparencyPercent,
+                                                onTransparencyChanged = onJournalPageTransparencyChanged
                                             )
                                             ColorPickerControlRow(
                                                 label = stringResource(R.string.settings_color_journal_accents),
                                                 value = journalAccentColorOverride,
                                                 onAuto = { onJournalAccentColorChanged(null) },
-                                                onPick = { colorPickerTarget = "journal_accent" }
+                                                onPick = { colorPickerTarget = "journal_accent" },
+                                                transparencyPercent = journalAccentTransparencyPercent,
+                                                onTransparencyChanged = onJournalAccentTransparencyChanged
                                             )
                                             Spacer(Modifier.height(6.dp))
                                             SettingsSubheading(stringResource(R.string.settings_action_colors))
@@ -3271,22 +3685,51 @@ fun SettingsScreen(
                                                 label = stringResource(R.string.settings_color_buttons),
                                                 value = buttonColorOverride,
                                                 onAuto = { onButtonColorChanged(null) },
-                                                onPick = { colorPickerTarget = "button" }
+                                                onPick = { colorPickerTarget = "button" },
+                                                transparencyPercent = buttonTransparencyPercent,
+                                                onTransparencyChanged = onButtonTransparencyChanged
                                             )
                                         }
                                     }
                                 }
                             }
-                            "alerts" -> {
+                            "hub" -> {
                                 CardBlock {
+                                    SettingsSubheading(stringResource(R.string.settings_account))
+                                    if (cloudConnected) {
+                                        Text(
+                                            text = if (cloudAccountEmail.isBlank()) stringResource(R.string.account_signed_in_google) else stringResource(R.string.account_signed_in_as, cloudAccountEmail),
+                                            color = OnCardText.copy(alpha = 0.82f),
+                                            fontSize = 12.sp
+                                        )
+                                        Spacer(Modifier.height(8.dp))
+                                        Button(
+                                            onClick = onCloudDisconnect,
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF546E7A)),
+                                            modifier = Modifier.heightIn(min = 46.dp)
+                                        ) {
+                                            Text(stringResource(R.string.l10n_sign_out), color = Color.White)
+                                        }
+                                    } else {
+                                        SettingsHint(stringResource(R.string.settings_account_hint))
+                                        Button(
+                                            onClick = onCloudConnectRequest,
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1565C0)),
+                                            modifier = Modifier.heightIn(min = 46.dp)
+                                        ) {
+                                            Text(stringResource(R.string.l10n_sign_in_with_google), color = Color.White)
+                                        }
+                                    }
+                                }
+                                CardBlock {
+                                    SettingsSubheading(stringResource(R.string.tab_alerts))
                                     SettingsHint(stringResource(R.string.settings_alerts_hint))
                                     SettingRow(stringResource(R.string.settings_daily_reminders), dailyRemindersEnabled, onDailyRemindersEnabledChanged)
                                     SettingRow(stringResource(R.string.settings_haptics), hapticsEnabled, onHapticsChanged)
                                     SettingRow(stringResource(R.string.settings_sound_effects), soundEffectsEnabled, onSoundEffectsChanged)
                                 }
-                            }
-                            "cloud" -> {
                                 CardBlock {
+                                    SettingsSubheading(stringResource(R.string.tab_cloud))
                                     Box(modifier = Modifier.fillMaxWidth()) {
                                         Column(
                                             modifier = Modifier
@@ -3322,8 +3765,7 @@ fun SettingsScreen(
                                                 }
                                             }
                                         }
-                                        Text(
-                                            "COMING SOON",
+                                        Text(stringResource(R.string.l10n_coming_soon),
                                             color = OnCardText.copy(alpha = 0.28f),
                                             fontSize = 34.sp,
                                             fontWeight = FontWeight.Black,
@@ -3333,156 +3775,6 @@ fun SettingsScreen(
                                         )
                                     }
                                 }
-                            }
-                            "advanced_templates" -> {
-                                CardBlock {
-                                    SettingsSubheading("Advanced Templates")
-                                    SettingsHint("Option 1: Write your goal, generate/copy prompt, send it to AI, then paste the returned JSON and analyze.\nOption 2: Download starter JSON, send it to AI with your request, then upload/paste the returned JSON and analyze.\nLimits: daily up to 500 total, main up to 200 total, shop items up to 120 total.")
-                                    val sectionShape = RoundedCornerShape(14.dp)
-                                    val sectionBorder = OnCardText.copy(alpha = 0.18f)
-                                    val sectionBg = OnCardText.copy(alpha = 0.03f)
-
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(sectionShape)
-                                            .background(sectionBg)
-                                            .border(1.dp, sectionBorder, sectionShape)
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        SettingsSubheading("Option 1) Build Prompt")
-                                        OutlinedTextField(
-                                            value = advancedTemplateRequestDraft,
-                                            onValueChange = { advancedTemplateRequestDraft = it.take(700) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            minLines = 2,
-                                            maxLines = 4,
-                                            label = { Text("Tell AI your quest goal") },
-                                            placeholder = {
-                                                Text(
-                                                    "Example: Generate 120 daily quests, 40 main quests, and 24 shop items in Saitama-style anime progression with a colorful neon vibe. Use a bright aqua accent and matching UI colors.",
-                                                    fontSize = 14.sp,
-                                                    color = OnCardText.copy(alpha = 0.42f)
-                                                )
-                                            },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = OnCardText,
-                                                unfocusedTextColor = OnCardText,
-                                                focusedLabelColor = OnCardText.copy(alpha = 0.48f),
-                                                unfocusedLabelColor = OnCardText.copy(alpha = 0.48f),
-                                                cursorColor = accentStrong
-                                            )
-                                        )
-                                        OutlinedButton(
-                                            onClick = { advancedTemplateGeneratedPrompt = onBuildAdvancedTemplatePromptFromRequest(advancedTemplateRequestDraft) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF58A8FF))
-                                        ) { Text("Generate Prompt", maxLines = 1) }
-                                        OutlinedButton(
-                                            onClick = {
-                                                if (advancedTemplateGeneratedPrompt.isNotBlank()) {
-                                                    clipboard.setText(AnnotatedString(advancedTemplateGeneratedPrompt))
-                                                    Toast.makeText(context, "Copied. Paste into your AI chat.", Toast.LENGTH_SHORT).show()
-                                                }
-                                            },
-                                            enabled = advancedTemplateGeneratedPrompt.isNotBlank(),
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF8FA6B2))
-                                        ) { Text("Copy for AI", maxLines = 1) }
-                                        if (advancedTemplateGeneratedPrompt.isNotBlank()) {
-                                            Text(
-                                                "Prompt ready. Tap \"Copy for AI\" and paste it into your AI chat.",
-                                                color = OnCardText.copy(alpha = 0.72f),
-                                                fontSize = 12.sp
-                                            )
-                                        }
-                                    }
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(sectionShape)
-                                            .background(sectionBg)
-                                            .border(1.dp, sectionBorder, sectionShape)
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        SettingsSubheading("Option 1) Paste JSON")
-                                        OutlinedTextField(
-                                            value = advancedTemplateJsonDraft,
-                                            onValueChange = { advancedTemplateJsonDraft = it },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            minLines = 5,
-                                            maxLines = 12,
-                                            label = { Text("Paste JSON") },
-                                            placeholder = { Text("Paste AI-generated JSON here...", fontSize = 13.sp, color = OnCardText.copy(alpha = 0.40f)) },
-                                            colors = OutlinedTextFieldDefaults.colors(
-                                                focusedTextColor = OnCardText,
-                                                unfocusedTextColor = OnCardText,
-                                                focusedLabelColor = OnCardText.copy(alpha = 0.48f),
-                                                unfocusedLabelColor = OnCardText.copy(alpha = 0.48f),
-                                                cursorColor = accentStrong
-                                            )
-                                        )
-                                    }
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(sectionShape)
-                                            .background(sectionBg)
-                                            .border(1.dp, sectionBorder, sectionShape)
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        SettingsSubheading("Option 2) Starter File")
-                                        OutlinedButton(
-                                            onClick = { advancedTemplateExportLauncher.launch("questify_advanced_template.json") },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF26A69A))
-                                        ) { Text("Download Starter JSON", maxLines = 1) }
-                                        OutlinedButton(
-                                            onClick = { advancedTemplateImportLauncher.launch(arrayOf("application/json", "text/plain")) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF7C8BFF))
-                                        ) { Text("Upload JSON File", maxLines = 1) }
-                                    }
-                                    Button(
-                                        onClick = {
-                                            val draft = advancedTemplateJsonDraft
-                                            if (draft.length > 1_000_000) {
-                                                advancedTemplateImportResult = AdvancedTemplateImportResult(
-                                                    success = false,
-                                                    templateName = "Unnamed",
-                                                    dailyAdded = 0,
-                                                    mainAdded = 0,
-                                                    errors = listOf("JSON too large. Keep text under ~1MB.")
-                                                )
-                                            } else {
-                                                advancedTemplateImportBusy = true
-                                                advancedTemplateScope.launch {
-                                                    advancedTemplateImportResult = withContext(Dispatchers.Default) {
-                                                        onImportAdvancedTemplateJson(draft)
-                                                    }
-                                                    advancedTemplateImportBusy = false
-                                                }
-                                            }
-                                        },
-                                        enabled = !advancedTemplateImportBusy,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        colors = ButtonDefaults.buttonColors(containerColor = accentStrong, contentColor = Color.Black)
-                                    ) { Text("Analyze & Create Template", fontWeight = FontWeight.Bold) }
-                                    if (advancedTemplateImportBusy) {
-                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = accentStrong)
-                                        Text("Analyzing JSON...", color = OnCardText.copy(alpha = 0.72f), fontSize = 12.sp)
-                                    }
-                                    Text(
-                                        "Prompt tip: ask AI to return a downloadable file named questify_advanced_template.json (or raw JSON only if files are not supported).",
-                                        color = OnCardText.copy(alpha = 0.68f),
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                            "feedback" -> {
                                 CardBlock {
                                     SettingsSubheading(stringResource(R.string.settings_creator_account))
                                     SettingsHint(stringResource(R.string.settings_creator_hint))
@@ -3510,6 +3802,161 @@ fun SettingsScreen(
                                             Button(onClick = { showFeedbackDialog = true }, colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6A5ACD))) { Text(stringResource(R.string.settings_send_feedback), color = Color.White) }
                                         }
                                     }
+                                }
+                            }
+                            "advanced_templates" -> {
+                                CardBlock {
+                                    SettingsSubheading(stringResource(R.string.settings_advanced_templates))
+                                    SettingsHint(stringResource(R.string.settings_advanced_templates_hint))
+                                    val sectionShape = RoundedCornerShape(14.dp)
+                                    val sectionBorder = OnCardText.copy(alpha = 0.18f)
+                                    val sectionBg = OnCardText.copy(alpha = 0.03f)
+
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(sectionShape)
+                                            .background(sectionBg)
+                                            .border(1.dp, sectionBorder, sectionShape)
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SettingsSubheading(stringResource(R.string.settings_option_build_prompt))
+                                        OutlinedTextField(
+                                            value = advancedTemplateRequestDraft,
+                                            onValueChange = { advancedTemplateRequestDraft = it.take(700) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            minLines = 2,
+                                            maxLines = 4,
+                                            label = { Text(stringResource(R.string.l10n_tell_ai_your_quest_goal)) },
+                                            placeholder = {
+                                                Text(stringResource(R.string.l10n_example_generate_120_daily_quests_40_main_),
+                                                    fontSize = 14.sp,
+                                                    color = OnCardText.copy(alpha = 0.42f)
+                                                )
+                                            },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = OnCardText,
+                                                unfocusedTextColor = OnCardText,
+                                                focusedLabelColor = OnCardText.copy(alpha = 0.48f),
+                                                unfocusedLabelColor = OnCardText.copy(alpha = 0.48f),
+                                                cursorColor = accentStrong
+                                            )
+                                        )
+                                        SettingRow(
+                                            title = stringResource(R.string.settings_ai_generate_themes),
+                                            value = advancedTemplateAllowThemeGeneration,
+                                            onChange = { advancedTemplateAllowThemeGeneration = it }
+                                        )
+                                        OutlinedButton(
+                                            onClick = {
+                                                advancedTemplateGeneratedPrompt = onBuildAdvancedTemplatePromptFromRequest(
+                                                    advancedTemplateRequestDraft,
+                                                    advancedTemplateAllowThemeGeneration
+                                                )
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF58A8FF))
+                                        ) { Text(stringResource(R.string.l10n_generate_prompt), maxLines = 1) }
+                                        OutlinedButton(
+                                            onClick = {
+                                                if (advancedTemplateGeneratedPrompt.isNotBlank()) {
+                                                    clipboard.setText(AnnotatedString(advancedTemplateGeneratedPrompt))
+                                                    Toast.makeText(context, context.getString(R.string.copied_paste_ai_chat), Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            enabled = advancedTemplateGeneratedPrompt.isNotBlank(),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF8FA6B2))
+                                        ) { Text(stringResource(R.string.l10n_copy_for_ai), maxLines = 1) }
+                                        if (advancedTemplateGeneratedPrompt.isNotBlank()) {
+                                            Text(stringResource(R.string.l10n_prompt_ready_tap_copy_for_ai_and_paste_it_),
+                                                color = OnCardText.copy(alpha = 0.72f),
+                                                fontSize = 12.sp
+                                            )
+                                        }
+                                    }
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(sectionShape)
+                                            .background(sectionBg)
+                                            .border(1.dp, sectionBorder, sectionShape)
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SettingsSubheading(stringResource(R.string.settings_option_paste_json))
+                                        OutlinedTextField(
+                                            value = advancedTemplateJsonDraft,
+                                            onValueChange = { advancedTemplateJsonDraft = it },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            minLines = 5,
+                                            maxLines = 12,
+                                            label = { Text(stringResource(R.string.l10n_paste_json)) },
+                                            placeholder = { Text(stringResource(R.string.l10n_paste_ai_generated_json_here), fontSize = 13.sp, color = OnCardText.copy(alpha = 0.40f)) },
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedTextColor = OnCardText,
+                                                unfocusedTextColor = OnCardText,
+                                                focusedLabelColor = OnCardText.copy(alpha = 0.48f),
+                                                unfocusedLabelColor = OnCardText.copy(alpha = 0.48f),
+                                                cursorColor = accentStrong
+                                            )
+                                        )
+                                    }
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(sectionShape)
+                                            .background(sectionBg)
+                                            .border(1.dp, sectionBorder, sectionShape)
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        SettingsSubheading(stringResource(R.string.settings_option_starter_file))
+                                        OutlinedButton(
+                                            onClick = { advancedTemplateExportLauncher.launch("questify_advanced_template.json") },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF26A69A))
+                                        ) { Text(stringResource(R.string.l10n_download_starter_json), maxLines = 1) }
+                                        OutlinedButton(
+                                            onClick = { advancedTemplateImportLauncher.launch(arrayOf("application/json", "text/plain")) },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF7C8BFF))
+                                        ) { Text(stringResource(R.string.l10n_upload_json_file), maxLines = 1) }
+                                    }
+                                    Button(
+                                        onClick = {
+                                            val draft = advancedTemplateJsonDraft
+                                            if (draft.length > 1_000_000) {
+                                                advancedTemplateImportResult = AdvancedTemplateImportResult(
+                                                    success = false,
+                                                    templateName = "Unnamed",
+                                                    dailyAdded = 0,
+                                                    mainAdded = 0,
+                                                    errors = listOf("JSON too large. Keep text under ~1MB.")
+                                                )
+                                            } else {
+                                                advancedTemplateImportBusy = true
+                                                advancedTemplateScope.launch {
+                                                    advancedTemplateImportResult = withContext(Dispatchers.Default) {
+                                                        onImportAdvancedTemplateJson(draft)
+                                                    }
+                                                    advancedTemplateImportBusy = false
+                                                }
+                                            }
+                                        },
+                                        enabled = !advancedTemplateImportBusy,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(containerColor = accentStrong, contentColor = Color.Black)
+                                    ) { Text(stringResource(R.string.l10n_analyze_create_template), fontWeight = FontWeight.Bold) }
+                                    if (advancedTemplateImportBusy) {
+                                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), color = accentStrong)
+                                        Text(stringResource(R.string.l10n_analyzing_json), color = OnCardText.copy(alpha = 0.72f), fontSize = 12.sp)
+                                    }
+                                    Text(stringResource(R.string.l10n_prompt_tip_ask_ai_to_return_a_downloadable),
+                                        color = OnCardText.copy(alpha = 0.68f),
+                                        fontSize = 11.sp
+                                    )
                                 }
                             }
                             "data" -> {
@@ -3558,7 +4005,23 @@ fun SettingsScreen(
                                 preset = preset,
                                 onApply = {
                                     SoundManager.playClick()
-                                    applyAdvancedExample(text = preset.text, appBg = preset.appBg, chromeBg = preset.chromeBg, cardBg = preset.cardBg, button = preset.button, journalPage = preset.journalPage, journalAccent = preset.journalAccent)
+                                    applyAdvancedExample(
+                                        text = preset.text,
+                                        appBg = preset.appBg,
+                                        chromeBg = preset.chromeBg,
+                                        cardBg = preset.cardBg,
+                                        button = preset.button,
+                                        journalPage = preset.journalPage,
+                                        journalAccent = preset.journalAccent,
+                                        accentTransparency = preset.accentTransparency,
+                                        textTransparency = preset.textTransparency,
+                                        appBgTransparency = preset.appBgTransparency,
+                                        chromeBgTransparency = preset.chromeBgTransparency,
+                                        cardBgTransparency = preset.cardBgTransparency,
+                                        journalPageTransparency = preset.journalPageTransparency,
+                                        journalAccentTransparency = preset.journalAccentTransparency,
+                                        buttonTransparency = preset.buttonTransparency
+                                    )
                                     showThemePresetDialog = false
                                 }
                             )
@@ -3631,23 +4094,23 @@ fun SettingsScreen(
             AlertDialog(
                 onDismissRequest = { advancedTemplateImportResult = null },
                 containerColor = CardDarkBlue,
-                title = { Text(if (result.success) "Template Imported" else "Import Failed", color = OnCardText, fontWeight = FontWeight.Bold) },
+                title = { Text(if (result.success) stringResource(R.string.template_imported_title) else stringResource(R.string.import_failed_title), color = OnCardText, fontWeight = FontWeight.Bold) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Template: ${result.templateName}", color = OnCardText, fontSize = 12.sp)
-                        Text("Daily added: ${result.dailyAdded} • Main added: ${result.mainAdded}", color = OnCardText.copy(alpha = 0.84f), fontSize = 12.sp)
+                        Text(stringResource(R.string.template_name_value, result.templateName), color = OnCardText, fontSize = 12.sp)
+                        Text(stringResource(R.string.template_import_counts, result.dailyAdded, result.mainAdded), color = OnCardText.copy(alpha = 0.84f), fontSize = 12.sp)
                         if (result.warnings.isNotEmpty()) {
-                            Text("Warnings:", color = Color(0xFFFFC107), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.l10n_warnings), color = Color(0xFFFFC107), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             Text(result.warnings.take(6).joinToString("\n"), color = OnCardText.copy(alpha = 0.76f), fontSize = 11.sp)
                         }
                         if (result.errors.isNotEmpty()) {
-                            Text("Errors:", color = Color(0xFFE57373), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.l10n_errors), color = Color(0xFFE57373), fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             Text(result.errors.take(4).joinToString("\n"), color = OnCardText.copy(alpha = 0.76f), fontSize = 11.sp)
                         }
                     }
                 },
                 confirmButton = {
-                    TextButton(onClick = { advancedTemplateImportResult = null }) { Text("OK", color = accentStrong, fontWeight = FontWeight.Bold) }
+                    TextButton(onClick = { advancedTemplateImportResult = null }) { Text(stringResource(R.string.ok), color = accentStrong, fontWeight = FontWeight.Bold) }
                 },
                 dismissButton = if (result.success && !result.packageId.isNullOrBlank()) {
                     {
@@ -3656,7 +4119,7 @@ fun SettingsScreen(
                                 val applied = onApplyAdvancedTemplateByPackage(result.packageId)
                                 if (applied) advancedTemplateImportResult = null
                             }
-                        ) { Text("Apply Now", color = Color(0xFF26A69A), fontWeight = FontWeight.Bold) }
+                        ) { Text(stringResource(R.string.l10n_apply_now), color = Color(0xFF26A69A), fontWeight = FontWeight.Bold) }
                     }
                 } else null
             )
@@ -3673,7 +4136,7 @@ fun SettingsScreen(
                                 value = feedbackCategory,
                                 onValueChange = {},
                                 readOnly = true,
-                                label = { Text("Category") },
+                                label = { Text(stringResource(R.string.category_label)) },
                                 trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = feedbackCategoryExpanded) },
                                 modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable, true).fillMaxWidth()
                             )
@@ -3692,7 +4155,7 @@ fun SettingsScreen(
                         OutlinedTextField(
                             value = feedbackMessage,
                             onValueChange = { feedbackMessage = it.take(600) },
-                            label = { Text("Message") },
+                            label = { Text(stringResource(R.string.l10n_message)) },
                             minLines = 3,
                             maxLines = 6,
                             modifier = Modifier.fillMaxWidth()
@@ -3708,10 +4171,24 @@ fun SettingsScreen(
                             feedbackCategory = "General"
                             showFeedbackDialog = false
                         }
-                    }) { Text("Send", color = accentStrong, fontWeight = FontWeight.Bold) }
+                    }) { Text(stringResource(R.string.l10n_send), color = accentStrong, fontWeight = FontWeight.Bold) }
                 },
                 dismissButton = {
                     TextButton(onClick = { showFeedbackDialog = false }) { Text(stringResource(R.string.cancel), color = OnCardText) }
+                }
+            )
+        }
+        if (performanceWarningMessage != null) {
+            AlertDialog(
+                onDismissRequest = { performanceWarningMessage = null },
+                containerColor = CardDarkBlue,
+                icon = { Icon(Icons.Default.WarningAmber, null, tint = Color(0xFFE57373)) },
+                title = { Text(stringResource(R.string.l10n_performance_note), color = OnCardText, fontWeight = FontWeight.Bold) },
+                text = { Text(performanceWarningMessage!!, color = OnCardText.copy(alpha = 0.82f)) },
+                confirmButton = {
+                    TextButton(onClick = { performanceWarningMessage = null }) {
+                        Text(stringResource(R.string.ok), color = accentStrong, fontWeight = FontWeight.Bold)
+                    }
                 }
             )
         }
@@ -3803,15 +4280,15 @@ fun AboutScreen(modifier: Modifier, accentStrong: Color, accentSoft: Color, onOp
             ScalableHeader(stringResource(R.string.title_about), uiScale, onOpenDrawer)
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 CardBlock {
-                    Text("Questify", color = accentStrong, fontSize = 22.sp, fontWeight = FontWeight.Black)
-                    Text("Enjoy! Update 1.04", color = OnCardText.copy(alpha = 0.82f))
+                    Text(stringResource(R.string.app_name), color = accentStrong, fontSize = 22.sp, fontWeight = FontWeight.Black)
+                    Text(stringResource(R.string.l10n_enjoy_update_1_04), color = OnCardText.copy(alpha = 0.82f))
                 }
                 CardBlock {
-                    Text("Tips", color = accentStrong, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.l10n_tips), color = accentStrong, fontWeight = FontWeight.Bold)
                     HorizontalDivider(color = OnCardText.copy(alpha = 0.14f), modifier = Modifier.padding(vertical = 4.dp))
-                    Text("• Swipe right on Home to go Main, then Journal.", color = OnCardText.copy(alpha = 0.75f))
-                    Text("• Swipe left on Home to open drawer.", color = OnCardText.copy(alpha = 0.75f))
-                    Text("• Enable Custom Mode in Settings to edit custom quests and shop items.", color = OnCardText.copy(alpha = 0.75f))
+                    Text(stringResource(R.string.l10n_swipe_right_on_home_to_go_main_then_journa), color = OnCardText.copy(alpha = 0.75f))
+                    Text(stringResource(R.string.l10n_swipe_left_on_home_to_open_drawer), color = OnCardText.copy(alpha = 0.75f))
+                    Text(stringResource(R.string.l10n_enable_custom_mode_in_settings_to_edit_cus), color = OnCardText.copy(alpha = 0.75f))
                 }
             }
         }
@@ -3837,7 +4314,7 @@ fun IntroSplash(backgroundImageUri: String?) {
                 )
                 Box(Modifier.fillMaxSize().background(imageOverlay))
             }
-            Text("Questify", fontSize = 42.sp, fontWeight = FontWeight.Black, color = accentForTheme())
+            Text(stringResource(R.string.app_name), fontSize = 42.sp, fontWeight = FontWeight.Black, color = accentForTheme())
         }
     }
 }
@@ -4044,10 +4521,10 @@ fun WelcomeSetupScreen(
                     when (page) {
                         0 -> {
                             val languages = listOf(
-                                "system" to "System Default",
-                                "en" to "English",
-                                "es" to "Español",
-                                "ar" to "العربية"
+                                "system" to stringResource(R.string.lang_system_default),
+                                "en" to stringResource(R.string.lang_english),
+                                "es" to stringResource(R.string.lang_spanish),
+                                "ar" to stringResource(R.string.lang_arabic)
                             )
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text(stringResource(R.string.setup_select_language), color = setupTextColor, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -4098,7 +4575,7 @@ fun WelcomeSetupScreen(
                                                 .padding(12.dp)
                                         ) {
                                             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                Text("Questify", color = setupTextColor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                                Text(stringResource(R.string.app_name), color = setupTextColor, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                                                 Box(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
@@ -4151,7 +4628,7 @@ fun WelcomeSetupScreen(
                                                     .padding(8.dp)
                                             ) {
                                                 Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
-                                                    Text("Questify", color = preset.previewText, fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                                    Text(stringResource(R.string.app_name), color = preset.previewText, fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                                     Box(
                                                         modifier = Modifier
                                                             .fillMaxWidth()
@@ -4403,7 +4880,7 @@ private fun BreathingRefreshHint(
         )
         Icon(
             imageVector = Icons.Default.Refresh,
-            contentDescription = "Pull down to refresh",
+            contentDescription = stringResource(R.string.pull_down_to_refresh_desc),
             tint = tint,
             modifier = Modifier
                 .size(16.dp)
@@ -4534,12 +5011,12 @@ fun CommunityScreen(
                                 .background(Color(0xFFFFA000).copy(alpha = 0.18f))
                                 .padding(horizontal = 10.dp, vertical = 6.dp)
                         ) {
-                            Text("Sync $pendingSyncCount", color = Color(0xFFFFCA28), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.sync_count, pendingSyncCount), color = Color(0xFFFFCA28), fontSize = 10.sp, fontWeight = FontWeight.Bold)
                         }
                         Spacer(Modifier.width(8.dp))
                     }
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, "Open settings", tint = OnCardText, modifier = Modifier.size(22.dp * uiScale))
+                        Icon(Icons.Default.Settings, stringResource(R.string.open_settings_desc), tint = OnCardIcon, modifier = Modifier.size(22.dp * uiScale))
                     }
                 }
 
@@ -4563,8 +5040,7 @@ fun CommunityScreen(
                             tabPageWidthPx = size.width.toFloat().coerceAtLeast(1f)
                         }
                 ) {
-                Text(
-                    "EXPERIMENTAL",
+                Text(stringResource(R.string.l10n_experimental),
                     color = OnCardText.copy(alpha = 0.07f),
                     fontSize = 40.sp,
                     fontWeight = FontWeight.Black,
@@ -4598,8 +5074,24 @@ fun CommunityScreen(
                                     .padding(horizontal = 12.dp, vertical = 10.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Text(stringResource(R.string.comm_create), color = OnCardText.copy(alpha = 0.7f), fontWeight = FontWeight.Bold)
-                                Text(stringResource(R.string.comm_published), color = OnCardText.copy(alpha = 0.5f), fontWeight = FontWeight.Bold)
+                                Text(
+                                    stringResource(R.string.comm_create),
+                                    color = if (publishSection == 0) OnCardText else OnCardText.copy(alpha = 0.5f),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { publishSection = 0 }
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
+                                Text(
+                                    stringResource(R.string.comm_published),
+                                    color = if (publishSection == 1) OnCardText else OnCardText.copy(alpha = 0.5f),
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .clickable { publishSection = 1 }
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                )
                             }
                             if (publishSection == 0) {
                                 val centeredField = Modifier
@@ -4644,10 +5136,9 @@ fun CommunityScreen(
                                         publishDesc = ""
                                         publishTags = ""
                                     },
-                                    enabled = publishTitle.trim().isNotBlank() && publishDesc.trim().isNotBlank(),
                                     modifier = Modifier.fillMaxWidth(0.95f).align(Alignment.CenterHorizontally),
                                     colors = ButtonDefaults.buttonColors(containerColor = accentStrong)
-                                ) { Text(stringResource(R.string.comm_publish_btn), color = Color.Black, fontWeight = FontWeight.Black) }
+                                ) { Text(stringResource(R.string.comm_publish_btn), color = readableTextColor(accentStrong), fontWeight = FontWeight.Black) }
                                 Text(stringResource(R.string.comm_publish_hint), color = OnCardText.copy(alpha = 0.55f), fontSize = 12.sp)
                             } else {
                                 if (myPublishedPosts.isEmpty()) {
@@ -4674,8 +5165,8 @@ fun CommunityScreen(
                                         ) {
                                             Text(post.template.templateName, color = OnCardText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                                             Text(post.description, color = OnCardText.copy(alpha = 0.76f), fontSize = 12.sp, maxLines = 2)
-                                            Text("Published $publishedLabel", color = OnCardText.copy(alpha = 0.58f), fontSize = 11.sp)
-                                            Text("Rating ${"%.1f".format(post.ratingAverage)} (${post.ratingCount}) • Remixes ${post.remixCount}", color = OnCardText.copy(alpha = 0.62f), fontSize = 11.sp)
+                                            Text(stringResource(R.string.comm_published_value, publishedLabel), color = OnCardText.copy(alpha = 0.58f), fontSize = 11.sp)
+                                            Text(stringResource(R.string.comm_rating_remix_line, "%.1f".format(post.ratingAverage), post.ratingCount, post.remixCount), color = OnCardText.copy(alpha = 0.62f), fontSize = 11.sp)
                                         }
                                     }
                                 }
@@ -4692,7 +5183,7 @@ fun CommunityScreen(
                                     .fillMaxWidth()
                                     .padding(horizontal = 16.dp),
                                 singleLine = true,
-                                leadingIcon = { Icon(Icons.Default.Search, "Search", tint = OnCardText.copy(alpha = 0.6f)) },
+                                leadingIcon = { Icon(Icons.Default.Search, stringResource(R.string.search_desc), tint = OnCardText.copy(alpha = 0.6f)) },
                                 trailingIcon = {
                                     if (searchQuery.isNotBlank()) {
                                         IconButton(onClick = { searchQuery = "" }) {
@@ -4873,6 +5364,14 @@ fun CommunityScreen(
                         .padding(12.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        IconButton(onClick = { selectedCommunityPostId = null }) {
+                            Icon(Icons.Default.Close, contentDescription = stringResource(R.string.close), tint = OnCardText.copy(alpha = 0.8f))
+                        }
+                    }
                     CommunityPostCard(
                         post = selectedCommunityPost,
                         accentStrong = accentStrong,
@@ -4894,9 +5393,6 @@ fun CommunityScreen(
                         onSubmitComment = { body -> onSubmitComment(selectedCommunityPost.id, body) },
                         onVoteComment = { commentId, vote -> onVoteComment(selectedCommunityPost.id, commentId, vote) }
                     )
-                    TextButton(onClick = { selectedCommunityPostId = null }, modifier = Modifier.align(Alignment.End)) {
-                        Text("Close", color = accentStrong)
-                    }
                 }
             }
         }
@@ -4970,6 +5466,8 @@ fun CommunityPostCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
+                    .background(Color.Black.copy(alpha = 0.14f))
+                    .border(1.dp, OnCardText.copy(alpha = 0.14f), RoundedCornerShape(10.dp))
                     .then(
                         if (interactionsEnabled) {
                             Modifier.pointerInput(post.id) {
@@ -5014,22 +5512,8 @@ fun CommunityPostCard(
                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 0.dp),
                             modifier = Modifier.height(26.dp)
                         ) {
-                            Text(
-                                "Add Template",
+                            Text(stringResource(R.string.comm_add_template),
                                 color = readableTextColor(accentStrong),
-                                fontWeight = FontWeight.Black,
-                                fontSize = 10.sp
-                            )
-                        }
-                        Spacer(Modifier.width(4.dp))
-                        TextButton(
-                            onClick = onToggleFollow,
-                            enabled = interactionsEnabled,
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp)
-                        ) {
-                            Text(
-                                if (isFollowing) "Following" else "Follow",
-                                color = if (isFollowing) accentSoft else accentStrong,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 10.sp
                             )
@@ -5051,8 +5535,7 @@ fun CommunityPostCard(
                 }
             }
             if (post.template.isPremium) {
-                Text(
-                    "PRO",
+                Text(stringResource(R.string.l10n_pro),
                     color = Color(0xFFFFD54F),
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Black,
@@ -5082,7 +5565,7 @@ fun CommunityPostCard(
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text("Report creator", color = OnCardText) },
+                    text = { Text(stringResource(R.string.comm_report), color = OnCardText) },
                     onClick = {
                         showModerationMenu = false
                         onReport()
@@ -5093,131 +5576,151 @@ fun CommunityPostCard(
 
         if (isExpanded) {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                val detailSectionShape = RoundedCornerShape(10.dp)
+                val detailSectionModifier = Modifier
+                    .fillMaxWidth()
+                    .clip(detailSectionShape)
+                    .background(Color.Black.copy(alpha = 0.14f))
+                    .border(1.dp, OnCardText.copy(alpha = 0.14f), detailSectionShape)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                Box(modifier = detailSectionModifier) {
                     Text(
                         "by ${post.authorName} • $publishedLabel • Trust: $trustLabel • Remixes ${post.remixCount}",
                         color = OnCardText.copy(alpha = 0.62f),
-                        fontSize = 12.sp,
-                        modifier = Modifier.weight(1f)
+                        fontSize = 12.sp
                     )
                 }
-                if (post.description.isNotBlank()) {
-                    Text(
-                        post.description,
-                        color = OnCardText.copy(alpha = 0.78f),
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp
-                    )
-                }
-
-                if (post.tags.isNotEmpty()) {
-                    val tagChipBg = OnCardText.copy(alpha = 0.10f)
-                    val tagChipText = OnCardText.copy(alpha = 0.78f)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        post.tags.take(3).forEach { tag ->
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(tagChipBg)
-                                    .padding(horizontal = 10.dp, vertical = 3.dp)
-                            ) {
-                                Text("#$tag", color = tagChipText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                if (post.description.isNotBlank() || post.tags.isNotEmpty() || post.templateTrust != TemplateTrustLevel.VERIFIED_SAFE) {
+                    Column(
+                        modifier = detailSectionModifier,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        if (post.description.isNotBlank()) {
+                            Text(
+                                post.description,
+                                color = OnCardText.copy(alpha = 0.78f),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                        }
+                        if (post.tags.isNotEmpty()) {
+                            val tagChipBg = OnCardText.copy(alpha = 0.10f)
+                            val tagChipText = OnCardText.copy(alpha = 0.78f)
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                post.tags.take(3).forEach { tag ->
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(999.dp))
+                                            .background(tagChipBg)
+                                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                                    ) {
+                                        Text("#$tag", color = tagChipText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
-                    }
-                }
-                if (post.templateTrust == TemplateTrustLevel.FLAGGED) {
-                    Text(
-                        "Template flagged for safety review. Applying is disabled.",
-                        color = Color(0xFFE57373),
-                        fontSize = 12.sp
-                    )
-                } else if (post.templateTrust == TemplateTrustLevel.SANITIZED) {
-                    Text(
-                        "Template was auto-cleaned for safe import.",
-                        color = Color(0xFFFFCC80),
-                        fontSize = 12.sp
-                    )
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
-                        Text(
-                            "${"%.1f".format(post.ratingAverage)} (${post.ratingCount})",
-                            color = accentStrong,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(end = 6.dp)
-                        )
-                        (1..5).forEach { star ->
-                            Icon(
-                                Icons.Default.Star,
-                                null,
-                                tint = if (star <= currentRating) Color(0xFFFFC107) else OnCardText.copy(alpha = 0.25f),
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable(enabled = interactionsEnabled) { onRate(star) }
-                                    .padding(1.dp)
+                        if (post.templateTrust == TemplateTrustLevel.FLAGGED) {
+                            Text(stringResource(R.string.l10n_template_flagged_for_safety_review_applyin),
+                                color = Color(0xFFE57373),
+                                fontSize = 12.sp
+                            )
+                        } else if (post.templateTrust == TemplateTrustLevel.SANITIZED) {
+                            Text(stringResource(R.string.l10n_template_was_auto_cleaned_for_safe_import),
+                                color = Color(0xFFFFCC80),
+                                fontSize = 12.sp
                             )
                         }
                     }
-                    Spacer(Modifier.weight(1f))
-                    Text(
-                        questCountLabel,
-                        color = OnCardText.copy(alpha = 0.6f),
-                        fontSize = 12.sp
-                    )
-                    TextButton(
-                        onClick = onToggleFollow,
-                        enabled = interactionsEnabled,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
-                    ) {
+                }
+
+                Box(modifier = detailSectionModifier) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(1.dp)) {
+                            Text(
+                                "${"%.1f".format(post.ratingAverage)} (${post.ratingCount})",
+                                color = accentStrong,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 6.dp)
+                            )
+                            (1..5).forEach { star ->
+                                Icon(
+                                    Icons.Default.Star,
+                                    null,
+                                    tint = if (star <= currentRating) Color(0xFFFFC107) else OnCardText.copy(alpha = 0.25f),
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clickable(enabled = interactionsEnabled) { onRate(star) }
+                                        .padding(1.dp)
+                                )
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
                         Text(
-                            if (isFollowing) "Following" else "Follow",
-                            color = if (isFollowing) accentSoft else accentStrong,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 13.sp
+                            questCountLabel,
+                            color = OnCardText.copy(alpha = 0.6f),
+                            fontSize = 12.sp
                         )
+                        TextButton(
+                            onClick = onToggleFollow,
+                            enabled = interactionsEnabled,
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
+                        ) {
+                            Text(
+                                if (isFollowing) "Following" else "Follow",
+                                color = if (isFollowing) accentSoft else accentStrong,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(6.dp))
                 var commentDraft by remember(post.id) { mutableStateOf("") }
-                OutlinedTextField(
-                    value = commentDraft,
-                    onValueChange = { commentDraft = it.take(500) },
-                    enabled = interactionsEnabled,
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    placeholder = { Text("Add a comment...", color = OnCardText.copy(alpha = 0.5f)) },
-                    trailingIcon = {
-                        TextButton(
-                            onClick = {
-                                val payload = commentDraft.trim()
-                                if (payload.length >= 2) {
-                                    onSubmitComment(payload)
-                                    commentDraft = ""
-                                }
-                            },
-                            enabled = interactionsEnabled && commentDraft.trim().length >= 2
-                        ) { Text("Post", color = accentStrong) }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = OnCardText,
-                        unfocusedTextColor = OnCardText,
-                        cursorColor = accentStrong
+                Column(
+                    modifier = detailSectionModifier,
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(stringResource(R.string.l10n_post_comment), color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    OutlinedTextField(
+                        value = commentDraft,
+                        onValueChange = { commentDraft = it.take(500) },
+                        enabled = interactionsEnabled,
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        placeholder = { Text(stringResource(R.string.l10n_add_a_comment), color = OnCardText.copy(alpha = 0.5f)) },
+                        trailingIcon = {
+                            TextButton(
+                                onClick = {
+                                    val payload = commentDraft.trim()
+                                    if (payload.length >= 2) {
+                                        onSubmitComment(payload)
+                                        commentDraft = ""
+                                    }
+                                },
+                                enabled = interactionsEnabled && commentDraft.trim().length >= 2
+                            ) { Text(stringResource(R.string.l10n_post), color = accentStrong) }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = OnCardText,
+                            unfocusedTextColor = OnCardText,
+                            cursorColor = accentStrong
+                        )
                     )
-                )
+                }
                 if (comments.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 6.dp)) {
+                    Column(
+                        modifier = detailSectionModifier,
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text(stringResource(R.string.l10n_comments), color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                         comments.takeLast(6).forEach { c ->
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(Color.Black.copy(alpha = 0.16f))
+                                    .border(1.dp, OnCardText.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
                                     .padding(horizontal = 10.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -5265,11 +5768,15 @@ fun QuestsScreen(
     onApplySavedTemplate: (GameTemplate, String?, Boolean) -> Unit,
     onDeleteSavedTemplate: (GameTemplate) -> Unit,
     onRequireCustomMode: () -> Unit,
+    onDeleteCategory: (QuestCategory) -> Unit,
+    onDeleteChain: (String) -> Unit,
     onOpenCommunityTemplates: () -> Unit,
     onOpenAdvancedTemplates: () -> Unit,
     showTutorial: Boolean,
     onTutorialDismiss: () -> Unit,
     initialTab: Int = 0,
+    openDailyEditorForId: String? = null,
+    onOpenDailyEditorHandled: () -> Unit = {},
     onOpenDrawer: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
@@ -5279,6 +5786,7 @@ fun QuestsScreen(
     var showDailyEditor by remember { mutableStateOf(false) }
     var showMainEditor by remember { mutableStateOf(false) }
     var showRestoreConfirm by remember { mutableStateOf(false) }
+    var expandedDailyCategory by remember { mutableStateOf<QuestCategory?>(null) }
 
     var showExportNameDialog by remember { mutableStateOf(false) }
     var exportName by remember { mutableStateOf("My Custom MMO") }
@@ -5297,6 +5805,7 @@ fun QuestsScreen(
     var deleteDailyId by remember { mutableStateOf<String?>(null) }
     var deleteMainId by remember { mutableStateOf<String?>(null) }
     var templateToDelete by remember { mutableStateOf<GameTemplate?>(null) }
+    var hiddenTemplatePackageIds by rememberSaveable { mutableStateOf(setOf<String>()) }
     val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
     val tabProgress = run {
         val rawOffset = if (isRtl) -tabOffset else tabOffset
@@ -5309,6 +5818,17 @@ fun QuestsScreen(
             tabOffset = 0f
         }
     }
+    LaunchedEffect(openDailyEditorForId, dailyTemplates) {
+        val targetId = openDailyEditorForId ?: return@LaunchedEffect
+        val targetTemplate = dailyTemplates.firstOrNull { it.id == targetId }
+        if (targetTemplate != null) {
+            selectedTab = 0
+            expandedDailyCategory = targetTemplate.category
+            editingDaily = targetTemplate
+            showDailyEditor = true
+        }
+        onOpenDailyEditorHandled()
+    }
 
     val sortedDaily = remember(dailyTemplates) { dailyTemplates.sortedWith(compareByDescending<CustomTemplate> { it.isPinned }.thenBy { it.title }) }
     val groupedDaily = remember(sortedDaily) { sortedDaily.groupBy { it.category } }
@@ -5318,7 +5838,7 @@ fun QuestsScreen(
             Column(verticalArrangement = Arrangement.spacedBy((6.dp * uiScale))) {
                 ScalableHeader(title = stringResource(R.string.title_quests_templates), uiScale = uiScale, onOpenDrawer = onOpenDrawer) {
                     IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, "Open settings", tint = OnCardText, modifier = Modifier.size(22.dp * uiScale))
+                        Icon(Icons.Default.Settings, stringResource(R.string.open_settings_desc), tint = OnCardIcon, modifier = Modifier.size(22.dp * uiScale))
                     }
                 }
 
@@ -5363,7 +5883,7 @@ fun QuestsScreen(
                                 if (dailyTemplates.isEmpty()) {
                                     item {
                                         Box(modifier = Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(18.dp)).background(CardDarkBlue).padding(14.dp)) {
-                                            Text("No daily quests.", color = OnCardText.copy(alpha = 0.85f))
+                                            Text(stringResource(R.string.quest_pool_no_dailies), color = OnCardText.copy(alpha = 0.85f))
                                         }
                                     }
                                 } else {
@@ -5373,10 +5893,18 @@ fun QuestsScreen(
                                             item {
                                                 QuestCategoryHeader(
                                                     cat, items, accentSoft,
+                                                    externalExpand = expandedDailyCategory == cat,
                                                     customMode = customMode,
-                                                    onEdit = { if (customMode) { editingDaily = it; showDailyEditor = true } },
+                                                    onEdit = {
+                                                        if (customMode) {
+                                                            expandedDailyCategory = it.category
+                                                            editingDaily = it
+                                                            showDailyEditor = true
+                                                        }
+                                                    },
                                                     onDelete = { if (customMode) deleteDailyId = it.id },
-                                                    onToggle = { t, active -> onUpsertDaily(t.copy(isActive = active)) }
+                                                    onToggle = { t, active -> onUpsertDaily(t.copy(isActive = active)) },
+                                                    onDeleteCategory = onDeleteCategory
                                                 )
                                             }
                                         }
@@ -5386,7 +5914,7 @@ fun QuestsScreen(
                                 if (mainQuests.isEmpty()) {
                                     item {
                                         Box(modifier = Modifier.fillMaxWidth().padding(16.dp).clip(RoundedCornerShape(18.dp)).background(CardDarkBlue).padding(14.dp)) {
-                                            Text("No main quests.", color = OnCardText.copy(alpha = 0.85f))
+                                            Text(stringResource(R.string.quest_pool_no_mains), color = OnCardText.copy(alpha = 0.85f))
                                         }
                                     }
                                 } else {
@@ -5423,7 +5951,8 @@ fun QuestsScreen(
                                                 customMode = customMode,
                                                 onEdit = { if (customMode) { editingMain = it; showMainEditor = true } },
                                                 onDelete = { if (customMode) deleteMainId = it.id },
-                                                onToggle = { mq, active -> onUpsertMain(mq.copy(isActive = active)) }
+                                                onToggle = { mq, active -> onUpsertMain(mq.copy(isActive = active)) },
+                                                onDeleteChain = onDeleteChain
                                             )
                                         }
                                     }
@@ -5452,7 +5981,7 @@ fun QuestsScreen(
                                                 },
                                                 contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)
                                             ) {
-                                                Text("Community Templates", color = accentStrong, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                                Text(stringResource(R.string.community_templates), color = accentStrong, fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                                             }
                                         }
                                         TextButton(
@@ -5470,27 +5999,69 @@ fun QuestsScreen(
                                                     modifier = Modifier.size(14.dp)
                                                 )
                                                 Spacer(Modifier.width(4.dp))
-                                                Text("Advanced Template", color = accentStrong.copy(alpha = 0.92f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
+                                                Text(stringResource(R.string.l10n_advanced_template), color = accentStrong.copy(alpha = 0.92f), fontWeight = FontWeight.SemiBold, fontSize = 12.sp)
                                             }
                                         }
                                     }
                                 }
                                 item {
                                     val def = getDefaultGameTemplate()
-                                    val isActive = activePackageIds.contains(def.packageId)
-                                    TemplateLibraryCard(def, isActive, accentStrong, accentSoft, uiScale, onToggle = { onTogglePackage(def, it) }, onDelete = null)
+                                    if (!hiddenTemplatePackageIds.contains(def.packageId)) {
+                                        val isActive = activePackageIds.contains(def.packageId)
+                                        TemplateLibraryCard(
+                                            def,
+                                            isActive,
+                                            accentStrong,
+                                            accentSoft,
+                                            uiScale,
+                                            onToggle = { onTogglePackage(def, it) },
+                                            onDelete = {
+                                                onTogglePackage(def, false)
+                                                hiddenTemplatePackageIds = hiddenTemplatePackageIds + def.packageId
+                                            },
+                                            isSystemTemplate = true
+                                        )
+                                    }
                                 }
                                 item {
                                     val realWorld = getRealWorldMomentumTemplate()
-                                    val isActive = activePackageIds.contains(realWorld.packageId)
-                                    TemplateLibraryCard(realWorld, isActive, accentStrong, accentSoft, uiScale, onToggle = { onTogglePackage(realWorld, it) }, onDelete = null)
+                                    if (!hiddenTemplatePackageIds.contains(realWorld.packageId)) {
+                                        val isActive = activePackageIds.contains(realWorld.packageId)
+                                        TemplateLibraryCard(
+                                            realWorld,
+                                            isActive,
+                                            accentStrong,
+                                            accentSoft,
+                                            uiScale,
+                                            onToggle = { onTogglePackage(realWorld, it) },
+                                            onDelete = {
+                                                onTogglePackage(realWorld, false)
+                                                hiddenTemplatePackageIds = hiddenTemplatePackageIds + realWorld.packageId
+                                            },
+                                            isSystemTemplate = true
+                                        )
+                                    }
                                 }
                                 item {
                                     val saitama = getLimitBreakerTemplate()
-                                    val isActive = activePackageIds.contains(saitama.packageId)
-                                    TemplateLibraryCard(saitama, isActive, accentStrong, accentSoft, uiScale, onToggle = { onTogglePackage(saitama, it) }, onDelete = null)
+                                    if (!hiddenTemplatePackageIds.contains(saitama.packageId)) {
+                                        val isActive = activePackageIds.contains(saitama.packageId)
+                                        TemplateLibraryCard(
+                                            saitama,
+                                            isActive,
+                                            accentStrong,
+                                            accentSoft,
+                                            uiScale,
+                                            onToggle = { onTogglePackage(saitama, it) },
+                                            onDelete = {
+                                                onTogglePackage(saitama, false)
+                                                hiddenTemplatePackageIds = hiddenTemplatePackageIds + saitama.packageId
+                                            },
+                                            isSystemTemplate = true
+                                        )
+                                    }
                                 }
-                                items(savedTemplates) { t ->
+                                items(savedTemplates.filterNot { hiddenTemplatePackageIds.contains(it.packageId) }) { t ->
                                     val isActive = activePackageIds.contains(t.packageId)
                                     TemplateLibraryCard(
                                         t,
@@ -5505,7 +6076,8 @@ fun QuestsScreen(
                                                 onTogglePackage(t, false)
                                             }
                                         },
-                                        onDelete = { templateToDelete = t }
+                                        onDelete = { templateToDelete = t },
+                                        isSystemTemplate = false
                                     )
                                 }
                             }
@@ -5625,6 +6197,7 @@ fun QuestsScreen(
                 } else if (customMode) {
                     SoundManager.playClick()
                     if (selectedTab == 0) {
+                        expandedDailyCategory = null
                         editingDaily = null
                         showDailyEditor = true
                     } else {
@@ -5672,7 +6245,7 @@ fun QuestsScreen(
                     containerColor = saveFabContainerColor,
                     contentColor = saveFabContentColor
                 ) {
-                    Icon(Icons.Default.Save, "Save template")
+                    Icon(Icons.Default.Save, stringResource(R.string.save_template_desc))
                 }
             }
         }
@@ -5680,42 +6253,54 @@ fun QuestsScreen(
 
     // --- DIALOGS ---
     if (showExportNameDialog) {
-        AlertDialog(onDismissRequest = { showExportNameDialog = false }, containerColor = CardDarkBlue, title = { Text("Share Template", color = accentStrong, fontWeight = FontWeight.Bold) }, text = { OutlinedTextField(value = exportName, onValueChange = { exportName = it }, label = { Text("Template Name", color = OnCardText.copy(alpha=0.6f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }, confirmButton = { Button(onClick = { onExportTemplate(exportName.ifBlank { "My Custom MMO" }); showExportNameDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text("Export", color = Color.Black, fontWeight = FontWeight.Bold) } }, dismissButton = { TextButton(onClick = { showExportNameDialog = false }) { Text("Cancel", color = OnCardText) } })
+        AlertDialog(onDismissRequest = { showExportNameDialog = false }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.share_template), color = accentStrong, fontWeight = FontWeight.Bold) }, text = { OutlinedTextField(value = exportName, onValueChange = { exportName = it }, label = { Text(stringResource(R.string.template_name_label), color = OnCardText.copy(alpha=0.6f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }, confirmButton = { Button(onClick = { onExportTemplate(exportName.ifBlank { "My Custom MMO" }); showExportNameDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.export_btn), color = Color.Black, fontWeight = FontWeight.Bold) } }, dismissButton = { TextButton(onClick = { showExportNameDialog = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } })
     }
 
     if (showSaveLibraryDialog) {
-        AlertDialog(onDismissRequest = { showSaveLibraryDialog = false }, containerColor = CardDarkBlue, title = { Text("Save to Template", color = accentStrong, fontWeight = FontWeight.Bold) }, text = { OutlinedTextField(value = saveLibraryName, onValueChange = { saveLibraryName = it }, label = { Text("Template Name", color = OnCardText.copy(alpha=0.6f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }, confirmButton = { Button(onClick = { onSaveCurrentToLibrary(saveLibraryName.ifBlank { "My Custom MMO" }); showSaveLibraryDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text("Save", color = Color.Black, fontWeight = FontWeight.Bold) } }, dismissButton = { TextButton(onClick = { showSaveLibraryDialog = false }) { Text("Cancel", color = OnCardText) } })
+        AlertDialog(onDismissRequest = { showSaveLibraryDialog = false }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.save_template_lib), color = accentStrong, fontWeight = FontWeight.Bold) }, text = { OutlinedTextField(value = saveLibraryName, onValueChange = { saveLibraryName = it }, label = { Text(stringResource(R.string.template_name_label), color = OnCardText.copy(alpha=0.6f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }, confirmButton = { Button(onClick = { onSaveCurrentToLibrary(saveLibraryName.ifBlank { "My Custom MMO" }); showSaveLibraryDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.save), color = Color.Black, fontWeight = FontWeight.Bold) } }, dismissButton = { TextButton(onClick = { showSaveLibraryDialog = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } })
     }
 
     if (templateToApply != null) {
         AlertDialog(
-            onDismissRequest = { templateToApply = null }, containerColor = CardDarkBlue, title = { Text("Equip Template?", color = accentStrong, fontWeight = FontWeight.Bold) },
+            onDismissRequest = { templateToApply = null }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.equip_template_title), color = accentStrong, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("Are you sure? This will apply theme, background, advanced options, and quests from this template.", color = OnCardText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                    Text("Theme: ${templateToApply!!.appTheme.name} • Daily quests: ${templateToApply!!.dailyQuests.size}", color = OnCardText.copy(alpha = 0.8f), fontSize = 13.sp)
+                    Text(stringResource(R.string.equip_template_desc), color = OnCardText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                    Text(stringResource(R.string.template_theme_daily_count_line, templateToApply!!.appTheme.name, templateToApply!!.dailyQuests.size), color = OnCardText.copy(alpha = 0.8f), fontSize = 13.sp)
                     HorizontalDivider(color = OnCardText.copy(alpha=0.1f))
 
                     // Clear Existing Checkbox
                     Row(modifier = Modifier.fillMaxWidth().clickable { clearExistingBeforeApply = !clearExistingBeforeApply }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = clearExistingBeforeApply, onCheckedChange = { clearExistingBeforeApply = it }, colors = CheckboxDefaults.colors(checkedColor = accentStrong))
-                        Text("Clear my current quests first", color = OnCardText, fontSize = 14.sp)
+                        Text(stringResource(R.string.clear_existing_quests), color = OnCardText, fontSize = 14.sp)
                     }
 
                     // Backup Checkbox
                     Row(modifier = Modifier.fillMaxWidth().clickable { backupBeforeApply = !backupBeforeApply }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = backupBeforeApply, onCheckedChange = { backupBeforeApply = it }, colors = CheckboxDefaults.colors(checkedColor = accentStrong))
-                        Text("Backup current setup to Template", color = OnCardText, fontSize = 14.sp)
+                        Text(stringResource(R.string.backup_current_setup), color = OnCardText, fontSize = 14.sp)
                     }
-                    if (backupBeforeApply) { OutlinedTextField(value = backupName, onValueChange = { backupName = it }, label = { Text("Backup Name", color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }
+                    if (backupBeforeApply) { OutlinedTextField(value = backupName, onValueChange = { backupName = it }, label = { Text(stringResource(R.string.backup_name_label), color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }
                 }
             },
-            confirmButton = { Button(onClick = { val finalBackupName = if (backupBeforeApply) backupName.ifBlank { "My Backup" } else null; onApplySavedTemplate(templateToApply!!, finalBackupName, clearExistingBeforeApply); templateToApply = null }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text("Equip", color = Color.Black, fontWeight = FontWeight.Bold) } },
-            dismissButton = { TextButton(onClick = { templateToApply = null }) { Text("Cancel", color = OnCardText) } }
+            confirmButton = { Button(onClick = { val finalBackupName = if (backupBeforeApply) backupName.ifBlank { "My Backup" } else null; onApplySavedTemplate(templateToApply!!, finalBackupName, clearExistingBeforeApply); templateToApply = null }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.equip_btn), color = Color.Black, fontWeight = FontWeight.Bold) } },
+            dismissButton = { TextButton(onClick = { templateToApply = null }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
         )
     }
 
-    if (showDailyEditor) { AddEditQuestDialog(accentStrong, editingDaily, onSave = { onUpsertDaily(it); showDailyEditor = false }, onDismiss = { showDailyEditor = false }) }
+    if (showDailyEditor) {
+        AddEditQuestDialog(
+            accentStrong = accentStrong,
+            initial = editingDaily,
+            onSave = {
+                onUpsertDaily(it)
+                showDailyEditor = false
+            },
+            onDismiss = {
+                showDailyEditor = false
+            }
+        )
+    }
 
     if (showMainEditor) {
         AddMainQuestDialog(
@@ -5729,62 +6314,62 @@ fun QuestsScreen(
 
     if (showRestoreConfirm) {
         AlertDialog(
-            onDismissRequest = { showRestoreConfirm = false }, containerColor = CardDarkBlue, title = { Text("Equip Default Package?", color = OnCardText, fontWeight = FontWeight.Bold) },
+            onDismissRequest = { showRestoreConfirm = false }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.l10n_equip_default_package), color = OnCardText, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text("This will add back any missing default quests to your current pool.", color = OnCardText.copy(alpha = 0.8f))
+                    Text(stringResource(R.string.l10n_this_will_add_back_any_missing_default_que), color = OnCardText.copy(alpha = 0.8f))
                     HorizontalDivider(color = OnCardText.copy(alpha=0.1f))
                     Row(modifier = Modifier.fillMaxWidth().clickable { restoreBackupBeforeApply = !restoreBackupBeforeApply }, verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(checked = restoreBackupBeforeApply, onCheckedChange = { restoreBackupBeforeApply = it }, colors = CheckboxDefaults.colors(checkedColor = accentStrong))
-                        Text("Backup current setup to Template", color = OnCardText, fontSize = 14.sp)
+                        Text(stringResource(R.string.backup_current_setup), color = OnCardText, fontSize = 14.sp)
                     }
-                    if (restoreBackupBeforeApply) { OutlinedTextField(value = restoreBackupName, onValueChange = { restoreBackupName = it }, label = { Text("Backup Name", color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }
+                    if (restoreBackupBeforeApply) { OutlinedTextField(value = restoreBackupName, onValueChange = { restoreBackupName = it }, label = { Text(stringResource(R.string.backup_name_label), color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }
                 }
             },
-            confirmButton = { TextButton(onClick = { if (restoreBackupBeforeApply) { onSaveCurrentToLibrary(restoreBackupName.ifBlank { "My Backup" }) }; onRestoreDefaults(); showRestoreConfirm = false }) { Text("Equip", color = accentStrong) } },
-            dismissButton = { TextButton(onClick = { showRestoreConfirm = false }) { Text("Cancel", color = OnCardText) } }
+            confirmButton = { TextButton(onClick = { if (restoreBackupBeforeApply) { onSaveCurrentToLibrary(restoreBackupName.ifBlank { "My Backup" }) }; onRestoreDefaults(); showRestoreConfirm = false }) { Text(stringResource(R.string.equip_btn), color = accentStrong) } },
+            dismissButton = { TextButton(onClick = { showRestoreConfirm = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
         )
     }
 
-    if (deleteDailyId != null) { AlertDialog(onDismissRequest = { deleteDailyId = null }, containerColor = CardDarkBlue, title = { Text("Delete?", color = OnCardText) }, confirmButton = { TextButton(onClick = { onDeleteDaily(deleteDailyId!!); deleteDailyId = null }) { Text("Delete", color = Color.Red) } }, dismissButton = { TextButton(onClick = { deleteDailyId = null }) { Text("Cancel", color = OnCardText) } }) }
-    if (deleteMainId != null) { AlertDialog(onDismissRequest = { deleteMainId = null }, containerColor = CardDarkBlue, title = { Text("Delete?", color = OnCardText) }, confirmButton = { TextButton(onClick = { onDeleteMain(deleteMainId!!); deleteMainId = null }) { Text("Delete", color = Color.Red) } }, dismissButton = { TextButton(onClick = { deleteMainId = null }) { Text("Cancel", color = OnCardText) } }) }
+    if (deleteDailyId != null) { AlertDialog(onDismissRequest = { deleteDailyId = null }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.l10n_delete), color = OnCardText) }, confirmButton = { TextButton(onClick = { onDeleteDaily(deleteDailyId!!); deleteDailyId = null }) { Text(stringResource(R.string.delete), color = Color.Red) } }, dismissButton = { TextButton(onClick = { deleteDailyId = null }) { Text(stringResource(R.string.cancel), color = OnCardText) } }) }
+    if (deleteMainId != null) { AlertDialog(onDismissRequest = { deleteMainId = null }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.l10n_delete), color = OnCardText) }, confirmButton = { TextButton(onClick = { onDeleteMain(deleteMainId!!); deleteMainId = null }) { Text(stringResource(R.string.delete), color = Color.Red) } }, dismissButton = { TextButton(onClick = { deleteMainId = null }) { Text(stringResource(R.string.cancel), color = OnCardText) } }) }
 
     if (templateToDelete != null) {
         AlertDialog(
             onDismissRequest = { templateToDelete = null },
             containerColor = CardDarkBlue,
-            title = { Text("Delete Template?", color = OnCardText, fontWeight = FontWeight.Bold) },
-            text = { Text("Are you sure you want to permanently delete '${templateToDelete!!.templateName}' from your Template list?", color = OnCardText.copy(alpha=0.8f)) },
+            title = { Text(stringResource(R.string.l10n_delete_template), color = OnCardText, fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.template_delete_confirm_name, templateToDelete!!.templateName), color = OnCardText.copy(alpha=0.8f)) },
             confirmButton = {
                 TextButton(onClick = {
                     onDeleteSavedTemplate(templateToDelete!!)
                     templateToDelete = null
-                }) { Text("Delete", color = Color.Red) }
+                }) { Text(stringResource(R.string.delete), color = Color.Red) }
             },
-            dismissButton = { TextButton(onClick = { templateToDelete = null }) { Text("Cancel", color = OnCardText) } }
+            dismissButton = { TextButton(onClick = { templateToDelete = null }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
         )
     }
     if (showTutorial) {
         CoachmarkOverlay(
             steps = listOf(
                 CoachStep(
-                    title = "Daily Tab",
-                    body = "Repeatable categories and daily quest pool.",
+                    title = stringResource(R.string.coach_quests_daily_title),
+                    body = stringResource(R.string.coach_quests_daily_body),
                     panelAlignment = Alignment.TopStart,
                     pointerAlignment = Alignment.TopCenter,
                     panelOffsetY = 24.dp,
                     pointerPosition = Offset(0.25f, 0.18f)
                 ),
                 CoachStep(
-                    title = "Main Tab",
-                    body = "Long-term quest packages and progression goals.",
+                    title = stringResource(R.string.coach_quests_main_title),
+                    body = stringResource(R.string.coach_quests_main_body),
                     panelAlignment = Alignment.CenterStart,
                     pointerAlignment = Alignment.Center,
                     pointerPosition = Offset(0.50f, 0.18f)
                 ),
                 CoachStep(
-                    title = "Template Tab",
-                    body = "Save/load builds and manage your challenge setups.",
+                    title = stringResource(R.string.coach_quests_template_title),
+                    body = stringResource(R.string.coach_quests_template_body),
                     panelAlignment = Alignment.BottomStart,
                     pointerAlignment = Alignment.BottomCenter,
                     pointerPosition = Offset(0.76f, 0.18f)
@@ -5913,7 +6498,7 @@ fun PoolMainQuestRow(mq: CustomMainQuest, accentSoft: Color, customMode: Boolean
         // 3. The Text
         Column(modifier = Modifier.weight(1f)) {
             Text(mq.title, color = if(mq.isActive) OnCardText else OnCardText.copy(alpha=0.5f), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text("${mq.xpReward} XP • ${mq.steps.size} Steps", color = OnCardText.copy(alpha = 0.5f), fontSize = 12.sp)
+            Text(stringResource(R.string.xp_steps_line, mq.xpReward, mq.steps.size), color = OnCardText.copy(alpha = 0.5f), fontSize = 12.sp)
         }
 
         // 4. Buttons
@@ -5929,7 +6514,8 @@ fun TemplateLibraryCard(
     accentSoft: Color,
     uiScale: Float = 1f, // NEW: Accepts scale factor
     onToggle: (Boolean) -> Unit,
-    onDelete: (() -> Unit)?
+    onDelete: (() -> Unit)?,
+    isSystemTemplate: Boolean = false
 ) {
     val libNeonBrush = rememberNeonBorderBrush(accentStrong, neonPaletteColor(ThemeRuntime.neonGlowPalette, ThemeRuntime.neonLightBoostEnabled))
     Row(
@@ -5962,43 +6548,69 @@ fun TemplateLibraryCard(
         // Text Info
         Column(modifier = Modifier.weight(1f)) {
             Text(template.templateName, color = if(isActive) OnCardText else OnCardText.copy(alpha=0.5f), fontWeight = FontWeight.Bold, fontSize = (14f * uiScale).sp)
-            Text("${template.dailyQuests.size} Daily • ${template.mainQuests.size} Main", color = OnCardText.copy(alpha = 0.5f), fontSize = (11f * uiScale).sp)
+            Text(stringResource(R.string.template_daily_main_count, template.dailyQuests.size, template.mainQuests.size), color = OnCardText.copy(alpha = 0.5f), fontSize = (11f * uiScale).sp)
         }
 
-        // STAMP vs DELETE
-        if (onDelete != null) {
-            // User Template -> Delete Button
-            IconButton(onClick = onDelete, modifier = Modifier.size(24.dp * uiScale)) {
-                Icon(Icons.Default.Delete, null, tint = Color.Red.copy(alpha=0.6f), modifier = Modifier.size(24.dp * uiScale))
+        // STAMP + DELETE OPTION
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isSystemTemplate) {
+                Box(modifier = Modifier.padding(end = 8.dp * uiScale).rotate(-10f)) {
+                    Text(
+                        text = "DEFAULT",
+                        color = OnCardText.copy(alpha = 0.2f),
+                        fontWeight = FontWeight.Black,
+                        fontSize = (16f * uiScale).sp,
+                        letterSpacing = 2.sp,
+                        style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false))
+                    )
+                }
             }
-        } else {
-            // System Template -> Clean, Big, Scalable "DEFAULT" Stamp
-            Box(modifier = Modifier.padding(end = 8.dp * uiScale).rotate(-10f)) {
-                Text(
-                    text = "DEFAULT",
-                    color = OnCardText.copy(alpha = 0.2f), // Slightly more visible since shadow is gone
-                    fontWeight = FontWeight.Black,
-                    fontSize = (16f * uiScale).sp, // BIGGER and SCALED
-                    letterSpacing = 2.sp,
-                    style = androidx.compose.ui.text.TextStyle(platformStyle = androidx.compose.ui.text.PlatformTextStyle(includeFontPadding = false))
-                )
+            if (onDelete != null) {
+                IconButton(onClick = onDelete, modifier = Modifier.size(24.dp * uiScale)) {
+                    Icon(Icons.Default.Delete, null, tint = Color.Red.copy(alpha=0.6f), modifier = Modifier.size(20.dp * uiScale))
+                }
             }
         }
     }
 }
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun QuestCategoryHeader(
     cat: QuestCategory,
     items: List<CustomTemplate>,
     accentSoft: Color,
+    externalExpand: Boolean = false,
     customMode: Boolean,
     onEdit: (CustomTemplate) -> Unit,
     onDelete: (CustomTemplate) -> Unit,
-    onToggle: (CustomTemplate, Boolean) -> Unit // NEW PARAMETER
+    onToggle: (CustomTemplate, Boolean) -> Unit,
+    onDeleteCategory: (QuestCategory) -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var showDeleteCategoryDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(externalExpand) {
+        if (externalExpand) expanded = true
+    }
     val rotation by animateFloatAsState(if (expanded) 180f else 0f)
     val categoryNeonBrush = rememberNeonBorderBrush(accentSoft, neonPaletteColor(ThemeRuntime.neonGlowPalette, ThemeRuntime.neonLightBoostEnabled))
+    if (showDeleteCategoryDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteCategoryDialog = false },
+            title = { Text(stringResource(R.string.delete_all_category_quests_title, cat.name), color = OnCardText) },
+            text = { Text(stringResource(R.string.delete_all_category_quests_body, items.size, cat.name), color = OnCardText.copy(alpha = 0.8f)) },
+            confirmButton = {
+                TextButton(onClick = { showDeleteCategoryDialog = false; onDeleteCategory(cat) }) {
+                    Text(stringResource(R.string.l10n_delete_all), color = Color(0xFFE57373))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteCategoryDialog = false }) {
+                    Text(stringResource(R.string.cancel), color = OnCardText.copy(alpha = 0.6f))
+                }
+            },
+            containerColor = CardDarkBlue
+        )
+    }
     Column {
         Row(
             modifier = Modifier
@@ -6006,7 +6618,10 @@ fun QuestCategoryHeader(
                 .clip(RoundedCornerShape(12.dp))
                 .background(CardDarkBlue)
                 .border(1.5.dp, categoryNeonBrush, RoundedCornerShape(12.dp))
-                .clickable { expanded = !expanded }
+                .combinedClickable(
+                    onClick = { expanded = !expanded },
+                    onLongClick = { if (customMode) showDeleteCategoryDialog = true }
+                )
                 .padding(vertical = 12.dp, horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -6085,7 +6700,7 @@ fun CustomTemplateRow(t: CustomTemplate, accentSoft: Color, customMode: Boolean,
         // 3. The Text
         Column(modifier = Modifier.weight(1f)) {
             Text(t.title, color = if(t.isActive) OnCardText else OnCardText.copy(alpha=0.5f), fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-            Text("Tier ${t.difficulty} • ${t.xp} XP", color = OnCardText.copy(alpha = 0.5f), fontSize = 12.sp)
+            Text(stringResource(R.string.tier_xp_line, t.difficulty, t.xp), color = OnCardText.copy(alpha = 0.5f), fontSize = 12.sp)
         }
 
         // 4. Buttons
@@ -6105,7 +6720,7 @@ fun AdminMainQuestRow(mq: CustomMainQuest, accentSoft: Color, adminMode: Boolean
         Spacer(Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(mq.title, color = OnCardText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            Text("${mq.xpReward} XP • ${mq.steps.size} Steps", color = OnCardText.copy(alpha = 0.7f), fontSize = 12.sp)
+            Text(stringResource(R.string.xp_steps_line, mq.xpReward, mq.steps.size), color = OnCardText.copy(alpha = 0.7f), fontSize = 12.sp)
         }
         if (adminMode) {
             // NOTE: Using Add icon as edit placeholder since we re-use the AddMainQuestDialog
@@ -6114,18 +6729,34 @@ fun AdminMainQuestRow(mq: CustomMainQuest, accentSoft: Color, adminMode: Boolean
     }
 }
 // === UPDATED EDITOR (With Pin Toggle) ===
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (CustomTemplate) -> Unit, onDismiss: () -> Unit) {
+fun AddEditQuestDialog(
+    accentStrong: Color,
+    initial: CustomTemplate?,
+    startWithCategoryExpanded: Boolean = false,
+    onSave: (CustomTemplate) -> Unit,
+    onDismiss: () -> Unit
+) {
     var title by remember { mutableStateOf(initial?.title.orEmpty()) }
     var icon by remember { mutableStateOf(initial?.icon ?: "⭐") }
     var category by remember { mutableStateOf(initial?.category ?: QuestCategory.FITNESS) }
+    var categoryExpanded by remember(initial?.id, startWithCategoryExpanded) { mutableStateOf(startWithCategoryExpanded) }
     var difficulty by remember { mutableIntStateOf(initial?.difficulty ?: 1) }
     var xp by remember { mutableIntStateOf(initial?.xp ?: 20) }
-    var target by remember { mutableIntStateOf(initial?.target ?: 1) }
+    var target by remember {
+        mutableIntStateOf(
+            when (initial?.objectiveType) {
+                QuestObjectiveType.HEALTH -> (initial.target).coerceAtLeast(100)
+                else -> initial?.target ?: 1
+            }
+        )
+    }
     var isPinned by remember { mutableStateOf(initial?.isPinned ?: false) }
     var objectiveType by remember { mutableStateOf(initial?.objectiveType ?: QuestObjectiveType.COUNT) }
     var timerMinutes by remember { mutableIntStateOf(((initial?.targetSeconds ?: 300) / 60).coerceIn(1, 360)) }
     var healthMetric by remember { mutableStateOf(initial?.healthMetric ?: "steps") }
+    var selectorHelp by remember { mutableStateOf<String?>(null) }
 
     // NEW: Image Picker Logic
     var imageUri by remember { mutableStateOf(initial?.imageUri) }
@@ -6145,14 +6776,14 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("Quest name") },
+                    label = { Text(stringResource(R.string.quest_name_label)) },
                     singleLine = true,
-                    modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                    modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = OnCardText,
                         unfocusedTextColor = OnCardText,
@@ -6160,15 +6791,15 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                     )
                 )
 
-                Text("Icon / Image", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.icon_image_label), color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold, textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth())
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(52.dp)
+                            .size(40.dp)
                             .clip(RoundedCornerShape(12.dp))
                             .background(OnCardText.copy(alpha = 0.10f))
                             .border(1.dp, OnCardText.copy(alpha = 0.14f), RoundedCornerShape(12.dp))
@@ -6185,89 +6816,218 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                         OutlinedTextField(
                             value = icon,
                             onValueChange = { icon = it.take(4) },
-                            label = { Text("Icon fallback") },
+                            label = { Text(stringResource(R.string.icon_fallback_label)) },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth().heightIn(min = 50.dp),
+                            enabled = imageUri == null,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 40.dp)
+                                .then(
+                                    if (imageUri != null) {
+                                        Modifier.clickable {
+                                            selectorHelp = "Icon fallback is disabled while an image is selected. Remove image to use icon."
+                                        }
+                                    } else Modifier
+                                ),
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedTextColor = OnCardText,
                                 unfocusedTextColor = OnCardText,
                                 cursorColor = accentStrong
                             )
                         )
-                        if (imageUri != null) {
-                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                Text("Image selected", color = accentStrong, fontSize = 11.sp)
-                                TextButton(onClick = { imageUri = null }, contentPadding = PaddingValues(0.dp)) {
-                                    Text("Remove", color = Color(0xFFE57373), fontSize = 11.sp)
-                                }
-                            }
+                    }
+                }
+                if (imageUri != null) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(stringResource(R.string.image_selected), color = accentStrong, fontSize = 11.sp)
+                        Spacer(Modifier.width(8.dp))
+                        TextButton(onClick = { imageUri = null }, contentPadding = PaddingValues(0.dp)) {
+                            Text(stringResource(R.string.remove), color = Color(0xFFE57373), fontSize = 11.sp)
                         }
                     }
                 }
 
-                Text("Category", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                CategoryChips(selected = category, accentStrong = accentStrong, onSelect = { category = it })
+                ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
+                    OutlinedTextField(
+                        value = category.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                        onValueChange = {},
+                        readOnly = true,
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.category_label)) },
+                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = categoryExpanded) },
+                        modifier = Modifier
+                            .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                            .fillMaxWidth()
+                            .heightIn(min = 40.dp)
+                            .clickable { categoryExpanded = true },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = OnCardText,
+                            unfocusedTextColor = OnCardText
+                        )
+                    )
+                    ExposedDropdownMenu(expanded = categoryExpanded, onDismissRequest = { categoryExpanded = false }) {
+                        QuestCategory.entries.forEach { cat ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                                        Text(cat.name, fontWeight = FontWeight.SemiBold)
+                                        Text(
+                                            when (cat) {
+                                                QuestCategory.FITNESS -> "Exercise quests"
+                                                QuestCategory.STUDY -> "Learning quests"
+                                                QuestCategory.HYDRATION -> "Water and recovery quests"
+                                                QuestCategory.DISCIPLINE -> "Habit and consistency quests"
+                                                QuestCategory.MIND -> "Focus and mindset quests"
+                                            },
+                                            color = OnCardText.copy(alpha = 0.62f),
+                                            fontSize = 11.sp
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    category = cat
+                                    categoryExpanded = false
+                                }
+                            )
+                        }
+                    }
+                }
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text("Objective", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    val objectiveHelp = stringResource(R.string.objective_help)
+                    val durationHelp = stringResource(R.string.duration_help)
+                    val healthMetricHelp = stringResource(R.string.health_metric_help)
+                    val targetHelp = stringResource(R.string.target_help)
+                    val countHelp = stringResource(R.string.count_help)
+                    val difficultyHelp = stringResource(R.string.difficulty_help)
+                    val xpHelp = stringResource(R.string.xp_help)
                     val objectiveTypes = listOf(QuestObjectiveType.COUNT, QuestObjectiveType.TIMER, QuestObjectiveType.HEALTH)
                     val objectiveIndex = objectiveTypes.indexOf(objectiveType).coerceAtLeast(0)
-                    SettingsSelectorRow(
-                        title = "",
+                    OutlinedArrowControlField(
+                        label = stringResource(R.string.objective_label),
+                        onInfoClick = { selectorHelp = objectiveHelp },
                         valueLabel = when (objectiveType) {
-                            QuestObjectiveType.COUNT -> "Count"
-                            QuestObjectiveType.TIMER -> "Timer"
-                            QuestObjectiveType.HEALTH -> "Health"
+                            QuestObjectiveType.COUNT -> stringResource(R.string.objective_count)
+                            QuestObjectiveType.TIMER -> stringResource(R.string.objective_timer)
+                            QuestObjectiveType.HEALTH -> stringResource(R.string.objective_health)
                         },
-                        onPrev = { objectiveType = objectiveTypes[(objectiveIndex - 1).coerceAtLeast(0)] },
-                        onNext = { objectiveType = objectiveTypes[(objectiveIndex + 1).coerceAtMost(objectiveTypes.lastIndex)] }
+                        minHeight = 50.dp,
+                        onPrev = {
+                            objectiveType = objectiveTypes[(objectiveIndex - 1).coerceAtLeast(0)]
+                            if (objectiveType == QuestObjectiveType.HEALTH && target < 100) target = 100
+                            if (objectiveType == QuestObjectiveType.COUNT) target = target.coerceIn(1, 10)
+                        },
+                        onNext = {
+                            objectiveType = objectiveTypes[(objectiveIndex + 1).coerceAtMost(objectiveTypes.lastIndex)]
+                            if (objectiveType == QuestObjectiveType.HEALTH && target < 100) target = 100
+                            if (objectiveType == QuestObjectiveType.COUNT) target = target.coerceIn(1, 10)
+                        }
                     )
                     if (objectiveType == QuestObjectiveType.TIMER) {
-                        Text("Timer Duration", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        SettingsSelectorRow(
-                            title = "",
-                            valueLabel = "${timerMinutes}m",
+                        OutlinedArrowControlField(
+                            label = stringResource(R.string.duration_label),
+                            onInfoClick = { selectorHelp = durationHelp },
+                            valueLabel = stringResource(R.string.minutes_short, timerMinutes),
+                            minHeight = 50.dp,
                             onPrev = { timerMinutes = (timerMinutes - 1).coerceAtLeast(1) },
                             onNext = { timerMinutes = (timerMinutes + 1).coerceAtMost(360) }
                         )
-                        Text("Quest completes after timer duration.", color = OnCardText.copy(alpha = 0.58f), fontSize = 10.sp)
                     } else if (objectiveType == QuestObjectiveType.HEALTH) {
                         val metrics = listOf("steps", "heart_rate", "distance_m", "calories_kcal")
                         val metricIndex = metrics.indexOf(healthMetric).coerceAtLeast(0)
-                        Text("Health Metric", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        SettingsSelectorRow(
-                            title = "",
+                        fun clampHealthTarget(metric: String, value: Int): Int {
+                            return when (metric) {
+                                "steps" -> value.coerceIn(100, 50000)
+                                "heart_rate" -> value.coerceIn(40, 220)
+                                "distance_m" -> value.coerceIn(100, 50000)
+                                "calories_kcal" -> value.coerceIn(50, 5000)
+                                else -> value.coerceIn(1, 50000)
+                            }
+                        }
+                        OutlinedArrowControlField(
+                            label = stringResource(R.string.health_metric_label),
+                            onInfoClick = { selectorHelp = healthMetricHelp },
                             valueLabel = when (healthMetric) {
-                                "steps" -> "Steps"
-                                "heart_rate" -> "Heart Rate"
-                                "distance_m" -> "Distance"
-                                "calories_kcal" -> "Calories"
-                                else -> "Steps"
+                                "steps" -> stringResource(R.string.l10n_steps)
+                                "heart_rate" -> stringResource(R.string.l10n_avg_heart_rate)
+                                "distance_m" -> stringResource(R.string.l10n_distance_m)
+                                "calories_kcal" -> stringResource(R.string.l10n_calories)
+                                else -> stringResource(R.string.l10n_steps)
                             },
-                            onPrev = { healthMetric = metrics[(metricIndex - 1).coerceAtLeast(0)] },
-                            onNext = { healthMetric = metrics[(metricIndex + 1).coerceAtMost(metrics.lastIndex)] }
+                            minHeight = 50.dp,
+                            onPrev = {
+                                healthMetric = metrics[(metricIndex - 1).coerceAtLeast(0)]
+                                target = clampHealthTarget(healthMetric, target)
+                            },
+                            onNext = {
+                                healthMetric = metrics[(metricIndex + 1).coerceAtMost(metrics.lastIndex)]
+                                target = clampHealthTarget(healthMetric, target)
+                            }
                         )
-                        Text("Health quests sync progress from Health Connect.", color = OnCardText.copy(alpha = 0.58f), fontSize = 10.sp)
+                        val healthStep = when (healthMetric) {
+                            "heart_rate" -> 5
+                                "calories_kcal" -> 25
+                                else -> 100
+                            }
+                        OutlinedArrowControlField(
+                            label = stringResource(R.string.target_label),
+                            onInfoClick = { selectorHelp = targetHelp },
+                            valueLabel = when (healthMetric) {
+                                "steps" -> stringResource(R.string.target_steps, target)
+                                "heart_rate" -> stringResource(R.string.target_bpm, target)
+                                "distance_m" -> stringResource(R.string.target_meters_short, target)
+                                "calories_kcal" -> stringResource(R.string.target_kcal, target)
+                                else -> "$target"
+                            },
+                            minHeight = 50.dp,
+                            onPrev = { target = clampHealthTarget(healthMetric, target - healthStep) },
+                            onNext = { target = clampHealthTarget(healthMetric, target + healthStep) }
+                        )
                     } else {
-                        Text("Count", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                        SettingsSelectorRow(
-                            title = "",
+                        OutlinedArrowControlField(
+                            label = stringResource(R.string.count_label),
+                            onInfoClick = { selectorHelp = countHelp },
                             valueLabel = "$target",
+                            minHeight = 50.dp,
                             onPrev = { target = (target - 1).coerceAtLeast(1) },
                             onNext = { target = (target + 1).coerceAtMost(10) }
-                        )
-                        Text(
-                            if (target == 1) "Count = complete once" else "Count = complete this many times",
-                            color = OnCardText.copy(alpha = 0.58f),
-                            fontSize = 10.sp
                         )
                     }
                 }
 
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 2.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    val difficultyHelp = stringResource(R.string.difficulty_help)
+                    val xpHelp = stringResource(R.string.xp_help)
+                    OutlinedArrowControlField(
+                        label = stringResource(R.string.difficulty_label),
+                        onInfoClick = { selectorHelp = difficultyHelp },
+                        valueLabel = stringResource(R.string.tier_n, difficulty),
+                        minHeight = 50.dp,
+                        onPrev = { difficulty = (difficulty - 1).coerceAtLeast(1) },
+                        onNext = { difficulty = (difficulty + 1).coerceAtMost(5) }
+                    )
+                    OutlinedArrowControlField(
+                        label = stringResource(R.string.xp_label),
+                        onInfoClick = { selectorHelp = xpHelp },
+                        valueLabel = stringResource(R.string.xp_n, xp),
+                        minHeight = 50.dp,
+                        onPrev = { xp = (xp - 5).coerceAtLeast(5) },
+                        onNext = { xp = (xp + 5).coerceAtMost(500) }
+                    )
+                }
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
@@ -6275,32 +7035,10 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                         .clip(RoundedCornerShape(12.dp))
                         .border(1.dp, OnCardText.copy(alpha = 0.18f), RoundedCornerShape(12.dp))
                         .clickable { isPinned = !isPinned }
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Checkbox(checked = isPinned, onCheckedChange = { isPinned = it }, colors = CheckboxDefaults.colors(checkedColor = accentStrong))
-                    Text("Critical Daily (Always appear)", color = if (isPinned) accentStrong else OnCardText, fontSize = 13.sp)
-                }
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Difficulty tier", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    SettingsSelectorRow(
-                        title = "",
-                        valueLabel = "Tier $difficulty",
-                        onPrev = { difficulty = (difficulty - 1).coerceAtLeast(1) },
-                        onNext = { difficulty = (difficulty + 1).coerceAtMost(5) }
-                    )
-                    Text("XP reward", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    SettingsSelectorRow(
-                        title = "",
-                        valueLabel = "$xp XP",
-                        onPrev = { xp = (xp - 5).coerceAtLeast(5) },
-                        onNext = { xp = (xp + 5).coerceAtMost(500) }
-                    )
+                    Text(stringResource(R.string.critical_daily), color = if (isPinned) accentStrong else OnCardText, fontSize = 13.sp)
                 }
             }
         },
@@ -6327,10 +7065,23 @@ fun AddEditQuestDialog(accentStrong: Color, initial: CustomTemplate?, onSave: (C
                     healthAggregation = if (objectiveType == QuestObjectiveType.HEALTH) "daily_total" else null
                 ))
             }) {
-                Text("Save", color = accentStrong)
+                Text(stringResource(R.string.save), color = accentStrong)
             }
-        },        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = OnCardText) } }
+        },        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), color = OnCardText) } }
     )
+    if (selectorHelp != null) {
+        AlertDialog(
+            onDismissRequest = { selectorHelp = null },
+            containerColor = CardDarkBlue,
+            title = { Text(stringResource(R.string.l10n_quick_info), color = OnCardText, fontWeight = FontWeight.Bold) },
+            text = { Text(selectorHelp.orEmpty(), color = OnCardText.copy(alpha = 0.82f)) },
+            confirmButton = {
+                TextButton(onClick = { selectorHelp = null }) {
+                    Text(stringResource(R.string.ok), color = accentStrong, fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
 }
 @OptIn(ExperimentalLayoutApi::class) @Composable fun CategoryChips(selected: QuestCategory, accentStrong: Color, onSelect: (QuestCategory) -> Unit) { FlowRow(modifier = Modifier.fillMaxWidth(), maxItemsInEachRow = 3, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { QuestCategory.entries.forEach { c -> Box(modifier = Modifier.height(32.dp).clip(RoundedCornerShape(99.dp)).background(if (c == selected) accentStrong.copy(alpha=0.4f) else Color.Transparent).border(1.dp, if(c==selected) accentStrong else OnCardText.copy(alpha=0.3f), RoundedCornerShape(99.dp)).clickable { onSelect(c) }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) { Text(c.name, color = OnCardText, fontSize = 11.sp) } } } }
 @Composable
@@ -6506,7 +7257,15 @@ private data class IntroStyleThemePreset(
     val accent: Color,
     val previewBg: Color,
     val previewCard: Color,
-    val previewText: Color
+    val previewText: Color,
+    val accentTransparency: Int = 0,
+    val textTransparency: Int = 0,
+    val appBgTransparency: Int = 0,
+    val chromeBgTransparency: Int = 0,
+    val cardBgTransparency: Int = 0,
+    val journalPageTransparency: Int = 0,
+    val journalAccentTransparency: Int = 0,
+    val buttonTransparency: Int = 0
 )
 private data class AdvancedThemePreset(
     val name: String,
@@ -6517,7 +7276,15 @@ private data class AdvancedThemePreset(
     val cardBg: Color,
     val button: Color,
     val journalPage: Color,
-    val journalAccent: Color
+    val journalAccent: Color,
+    val accentTransparency: Int = 0,
+    val textTransparency: Int = 0,
+    val appBgTransparency: Int = 0,
+    val chromeBgTransparency: Int = 0,
+    val cardBgTransparency: Int = 0,
+    val journalPageTransparency: Int = 0,
+    val journalAccentTransparency: Int = 0,
+    val buttonTransparency: Int = 0
 )
 @Composable
 private fun AdvancedThemePresetRow(
@@ -6583,14 +7350,14 @@ fun AdvancedColorMiniPreview(
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Daily Quests", color = chromeText, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.title_daily_quests), color = chromeText, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(999.dp))
                     .background(buttonColor)
                     .padding(horizontal = 8.dp, vertical = 3.dp)
             ) {
-                Text("START", color = buttonText, fontSize = 9.sp, fontWeight = FontWeight.Black)
+                Text(stringResource(R.string.start), color = buttonText, fontSize = 9.sp, fontWeight = FontWeight.Black)
             }
         }
         Row(
@@ -6609,10 +7376,10 @@ fun AdvancedColorMiniPreview(
             )
             Spacer(Modifier.width(8.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text("Quest card title", color = textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                Text("16 XP", color = cardText.copy(alpha = 0.8f), fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                Text(stringResource(R.string.l10n_quest_card_title), color = textColor, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.l10n_txt_16_xp), color = cardText.copy(alpha = 0.8f), fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
             }
-            Text("CLAIM", color = buttonColor, fontSize = 9.sp, fontWeight = FontWeight.Black)
+            Text(stringResource(R.string.claim), color = buttonColor, fontSize = 9.sp, fontWeight = FontWeight.Black)
         }
         Row(
             modifier = Modifier
@@ -6623,14 +7390,14 @@ fun AdvancedColorMiniPreview(
                 .padding(8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Journal", color = journalText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(stringResource(R.string.title_journal), color = journalText, fontSize = 10.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(5.dp))
                     .background(journalRibbon)
                     .padding(horizontal = 6.dp, vertical = 3.dp)
             ) {
-                Text("Log", color = readableTextColor(journalRibbon), fontSize = 8.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.l10n_log), color = readableTextColor(journalRibbon), fontSize = 8.sp, fontWeight = FontWeight.Bold)
             }
         }
     }
@@ -6654,30 +7421,52 @@ fun ColorPickerControlRow(
     value: Color?,
     onAuto: () -> Unit,
     onPick: () -> Unit,
-    autoLabel: String = "Auto",
-    pickEnabled: Boolean = true
+    autoLabel: String = "",
+    pickEnabled: Boolean = true,
+    transparencyPercent: Int? = null,
+    onTransparencyChanged: ((Int) -> Unit)? = null
 ) {
-    Row(
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 6.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(top = 6.dp)
     ) {
-        Box(
-            modifier = Modifier
-                .size(18.dp)
-                .clip(CircleShape)
-                .background(value ?: SubtlePanel)
-                .border(1.dp, OnCardText.copy(alpha = 0.25f), CircleShape)
-        )
-        Spacer(Modifier.width(8.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(label, color = OnCardText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Text(value?.let { formatColorHex(it) } ?: "Auto", color = OnCardText.copy(alpha = 0.7f), fontSize = 11.sp)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(18.dp)
+                    .clip(CircleShape)
+                    .background(value ?: SubtlePanel)
+                    .border(1.dp, OnCardText.copy(alpha = 0.25f), CircleShape)
+            )
+            Spacer(Modifier.width(8.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(label, color = OnCardText, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(value?.let { formatColorHex(it) } ?: stringResource(R.string.auto_label), color = OnCardText.copy(alpha = 0.7f), fontSize = 11.sp)
+            }
+            TextButton(onClick = { SoundManager.playClick(); onAuto() }) { Text(if (autoLabel.isBlank()) stringResource(R.string.auto_label) else autoLabel, color = OnCardText.copy(alpha = 0.82f)) }
+            OutlinedButton(onClick = { SoundManager.playClick(); onPick() }, enabled = pickEnabled) {
+                Text(stringResource(R.string.settings_pick), color = if (pickEnabled) OnCardText else OnCardText.copy(alpha = 0.45f))
+            }
         }
-        TextButton(onClick = { SoundManager.playClick(); onAuto() }) { Text(autoLabel, color = OnCardText.copy(alpha = 0.82f)) }
-        OutlinedButton(onClick = { SoundManager.playClick(); onPick() }, enabled = pickEnabled) {
-            Text("Pick", color = if (pickEnabled) OnCardText else OnCardText.copy(alpha = 0.45f))
+        if (transparencyPercent != null && onTransparencyChanged != null) {
+            Spacer(Modifier.height(4.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(stringResource(R.string.l10n_transparency), color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp)
+                Text(stringResource(R.string.value_percent, transparencyPercent.coerceIn(0, 100)), color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp)
+            }
+            Slider(
+                value = transparencyPercent.coerceIn(0, 100) / 100f,
+                onValueChange = { onTransparencyChanged((it * 100f).roundToInt().coerceIn(0, 100)) },
+                valueRange = 0f..1f
+            )
         }
     }
 }
@@ -6809,7 +7598,7 @@ fun ColorTuneDialog(
                         )
                     }
                 }
-                Text("Value ${ (value * 100f).roundToInt() }%", color = OnCardText.copy(alpha = 0.8f), fontSize = 11.sp)
+                Text(stringResource(R.string.value_percent_prefixed, (value * 100f).roundToInt()), color = OnCardText.copy(alpha = 0.8f), fontSize = 11.sp)
                 Slider(
                     value = value,
                     onValueChange = {
@@ -6834,7 +7623,7 @@ fun ColorTuneDialog(
                         parseHexColor(cleaned)?.let { applyColor(it) }
                     },
                     singleLine = true,
-                    label = { Text("Hex (#RRGGBB)") },
+                    label = { Text(stringResource(R.string.l10n_hex_rrggbb)) },
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = OnCardText,
@@ -6857,11 +7646,11 @@ fun ColorTuneDialog(
         },
         confirmButton = {
             TextButton(onClick = { onApply(currentColor()) }) {
-                Text("Apply", color = OnCardText, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.apply), color = OnCardText, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel", color = OnCardText) }
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), color = OnCardText) }
         }
     )
 }
@@ -6888,21 +7677,21 @@ fun SettingsGroupHeader(title: String, expanded: Boolean, onToggle: () -> Unit) 
 @Composable
 fun FontStyleSelector(selected: AppFontStyle, onSelect: (AppFontStyle) -> Unit) {
     val options = listOf(
-        AppFontStyle.DEFAULT to "Default",
-        AppFontStyle.SANS to "Sans",
-        AppFontStyle.SERIF to "Serif",
-        AppFontStyle.MONO to "Mono",
-        AppFontStyle.DISPLAY to "Display",
-        AppFontStyle.ROUNDED to "Rounded",
-        AppFontStyle.TERMINAL to "Terminal",
-        AppFontStyle.ELEGANT to "Elegant",
-        AppFontStyle.HANDWRITTEN to "Handwritten"
+        AppFontStyle.DEFAULT to stringResource(R.string.font_default),
+        AppFontStyle.SANS to stringResource(R.string.font_sans),
+        AppFontStyle.SERIF to stringResource(R.string.font_serif),
+        AppFontStyle.MONO to stringResource(R.string.font_mono),
+        AppFontStyle.DISPLAY to stringResource(R.string.font_display),
+        AppFontStyle.ROUNDED to stringResource(R.string.font_rounded),
+        AppFontStyle.TERMINAL to stringResource(R.string.font_terminal),
+        AppFontStyle.ELEGANT to stringResource(R.string.font_elegant),
+        AppFontStyle.HANDWRITTEN to stringResource(R.string.font_handwritten)
     )
     var localIndex by remember(selected) {
         mutableIntStateOf(options.indexOfFirst { it.first == selected }.coerceAtLeast(0))
     }
     SettingsSelectorRow(
-        title = "Font Style",
+        title = stringResource(R.string.font_style_title),
         valueLabel = options[localIndex].second,
         onPrev = { localIndex = (localIndex - 1 + options.size) % options.size; onSelect(options[localIndex].first) },
         onNext = { localIndex = (localIndex + 1) % options.size; onSelect(options[localIndex].first) }
@@ -6911,10 +7700,10 @@ fun FontStyleSelector(selected: AppFontStyle, onSelect: (AppFontStyle) -> Unit) 
 @Composable
 fun LanguageSelector(selected: String, onSelect: (String) -> Unit) {
     val options = listOf(
-        "system" to "System Default",
-        "en" to "English",
-        "es" to "Español",
-        "ar" to "العربية"
+        "system" to stringResource(R.string.lang_system_default),
+        "en" to stringResource(R.string.lang_english),
+        "es" to stringResource(R.string.lang_spanish),
+        "ar" to stringResource(R.string.lang_arabic)
     )
     var localIndex by remember(selected) {
         mutableIntStateOf(options.indexOfFirst { it.first == selected }.coerceAtLeast(0))
@@ -6922,7 +7711,7 @@ fun LanguageSelector(selected: String, onSelect: (String) -> Unit) {
     val savedIndex = options.indexOfFirst { it.first == selected }.coerceAtLeast(0)
     val isDirty = localIndex != savedIndex
     SettingsSelectorRow(
-        title = "Language",
+        title = stringResource(R.string.language_title),
         valueLabel = options[localIndex].second,
         onPrev = { localIndex = (localIndex - 1 + options.size) % options.size },
         onNext = { localIndex = (localIndex + 1) % options.size }
@@ -6932,7 +7721,7 @@ fun LanguageSelector(selected: String, onSelect: (String) -> Unit) {
             onClick = { SoundManager.playClick(); onSelect(options[localIndex].first) },
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         ) {
-            Text("Apply")
+            Text(stringResource(R.string.apply))
         }
     }
 }
@@ -6940,6 +7729,7 @@ fun LanguageSelector(selected: String, onSelect: (String) -> Unit) {
 private fun SettingsArrowChip(
     icon: ImageVector,
     enabled: Boolean,
+    onDisabledClick: (() -> Unit)? = null,
     onClick: () -> Unit
 ) {
     val isLightTheme = ThemeRuntime.currentTheme.isLightCategory()
@@ -6956,7 +7746,7 @@ private fun SettingsArrowChip(
             )
             .clickable(enabled = enabled) {
                 SoundManager.playClick()
-                onClick()
+                if (enabled) onClick() else onDisabledClick?.invoke()
             },
         contentAlignment = Alignment.Center
     ) {
@@ -6970,67 +7760,65 @@ private fun SettingsArrowChip(
 }
 
 @Composable
-private fun SettingsSelectorRow(
-    title: String,
+private fun LabeledArrowControlField(
+    label: String,
     valueLabel: String,
-    enabled: Boolean = true,
     onPrev: () -> Unit,
     onNext: () -> Unit,
-    onRowClick: (() -> Unit)? = null
+    modifier: Modifier = Modifier,
+    onInfoClick: (() -> Unit)? = null
 ) {
-    val controlShape = RoundedCornerShape(999.dp)
-    val isLightTheme = ThemeRuntime.currentTheme.isLightCategory()
-    val verticalPad = if (ThemeRuntime.largerTouchTargetsEnabled) 12.dp else 8.dp
-    val controlBg = if (isLightTheme) Color(0x17000000) else Color.Black.copy(alpha = 0.30f)
-    val controlBorder = OnCardText.copy(alpha = if (isLightTheme) 0.12f else 0.18f)
-    val rowClickModifier = if (onRowClick != null) {
-        Modifier.clickable(enabled = enabled) {
-            SoundManager.playClick()
-            onRowClick()
-        }
-    } else {
-        Modifier
-    }
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = verticalPad)
-            .heightIn(min = 48.dp)
-            .then(rowClickModifier)
-            .padding(horizontal = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        if (title.isNotBlank()) {
+    val controlShape = RoundedCornerShape(12.dp)
+    Box(modifier = modifier.fillMaxWidth().padding(top = 6.dp)) {
+        Row(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .offset(x = 12.dp, y = (-9).dp)
+                .background(CardDarkBlue)
+                .padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
-                title,
-                color = if (enabled) OnCardText else OnCardText.copy(alpha = 0.5f),
-                modifier = Modifier.weight(1f),
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                text = label,
+                color = OnCardText.copy(alpha = 0.76f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
             )
-        } else {
-            Spacer(Modifier.weight(1f))
+            if (onInfoClick != null) {
+                Box(
+                    modifier = Modifier
+                        .size(16.dp)
+                        .clip(CircleShape)
+                        .background(OnCardText.copy(alpha = 0.10f))
+                        .border(1.dp, OnCardText.copy(alpha = 0.20f), CircleShape)
+                        .clickable {
+                            SoundManager.playClick()
+                            onInfoClick()
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("!", color = OnCardText.copy(alpha = 0.85f), fontSize = 9.sp, fontWeight = FontWeight.Black)
+                }
+            }
         }
         Row(
             modifier = Modifier
-                .widthIn(min = 170.dp, max = 228.dp)
+                .fillMaxWidth()
                 .clip(controlShape)
-                .background(controlBg)
-                .border(1.dp, controlBorder, controlShape)
+                .background(Color.Black.copy(alpha = 0.30f))
+                .border(1.dp, OnCardText.copy(alpha = 0.18f), controlShape)
                 .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             SettingsArrowChip(
                 icon = Icons.AutoMirrored.Filled.ArrowBack,
-                enabled = enabled
+                enabled = true
             ) { onPrev() }
             Text(
                 valueLabel,
-                color = if (enabled) OnCardText else OnCardText.copy(alpha = 0.45f),
+                color = OnCardText,
                 modifier = Modifier.weight(1f),
                 textAlign = TextAlign.Center,
                 fontSize = 13.sp,
@@ -7039,8 +7827,214 @@ private fun SettingsSelectorRow(
             )
             SettingsArrowChip(
                 icon = Icons.AutoMirrored.Filled.ArrowForward,
-                enabled = enabled
+                enabled = true
             ) { onNext() }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OutlinedArrowControlField(
+    label: String,
+    valueLabel: String,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    modifier: Modifier = Modifier,
+    minHeight: Dp = 52.dp,
+    onInfoClick: (() -> Unit)? = null
+) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = valueLabel,
+            onValueChange = {},
+            readOnly = true,
+            singleLine = true,
+            label = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(label)
+                    if (onInfoClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(14.dp)
+                                .clip(CircleShape)
+                                .background(CardDarkBlue)
+                                .border(1.dp, OnCardText.copy(alpha = 0.20f), CircleShape)
+                                .clickable {
+                                    SoundManager.playClick()
+                                    onInfoClick()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("!", color = OnCardText.copy(alpha = 0.85f), fontSize = 8.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+            },
+            leadingIcon = {
+                IconButton(onClick = onPrev, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.previous_desc), tint = OnCardText.copy(alpha = 0.85f))
+                }
+            },
+            trailingIcon = {
+                IconButton(onClick = onNext, modifier = Modifier.size(28.dp)) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = stringResource(R.string.next), tint = OnCardText.copy(alpha = 0.85f))
+                }
+            },
+            textStyle = LocalTextStyle.current.copy(
+                textAlign = TextAlign.Center,
+                fontWeight = FontWeight.Bold,
+                color = OnCardText
+            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = minHeight),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = OnCardText,
+                unfocusedTextColor = OnCardText,
+                focusedLabelColor = OnCardText.copy(alpha = 0.62f),
+                unfocusedLabelColor = OnCardText.copy(alpha = 0.62f),
+                focusedLeadingIconColor = OnCardText.copy(alpha = 0.9f),
+                unfocusedLeadingIconColor = OnCardText.copy(alpha = 0.85f),
+                focusedTrailingIconColor = OnCardText.copy(alpha = 0.9f),
+                unfocusedTrailingIconColor = OnCardText.copy(alpha = 0.85f),
+                cursorColor = accentForTheme()
+            )
+        )
+    }
+}
+
+@Composable
+private fun SettingsSelectorRow(
+    title: String,
+    valueLabel: String,
+    enabled: Boolean = true,
+    compact: Boolean = false,
+    onInfoClick: (() -> Unit)? = null,
+    warningInfo: Boolean = false,
+    onDisabledControlClick: (() -> Unit)? = null,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    onRowClick: (() -> Unit)? = null
+) {
+    val controlShape = RoundedCornerShape(999.dp)
+    val isLightTheme = ThemeRuntime.currentTheme.isLightCategory()
+    val controlBg = if (isLightTheme) Color(0x17000000) else Color.Black.copy(alpha = 0.30f)
+    val controlBorder = OnCardText.copy(alpha = if (isLightTheme) 0.12f else 0.18f)
+    val rowClickModifier = if (onRowClick != null) {
+        Modifier.clickable(enabled = enabled || onDisabledControlClick != null) {
+            SoundManager.playClick()
+            if (enabled) onRowClick() else onDisabledControlClick?.invoke()
+        }
+    } else {
+        Modifier
+    }
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val smallScreen = maxWidth < 360.dp
+        val verticalPad = if (compact) 2.dp else if (ThemeRuntime.largerTouchTargetsEnabled) 12.dp else 8.dp
+        val titleFont = if (smallScreen || compact) 12.sp else 13.sp
+        val valueFont = if (smallScreen || compact) 12.sp else 13.sp
+        val controlMinWidth = when {
+            compact && smallScreen -> 124.dp
+            compact -> 136.dp
+            smallScreen -> 148.dp
+            else -> 160.dp
+        }
+        val controlMaxWidth = when {
+            compact && smallScreen -> 166.dp
+            compact -> 178.dp
+            smallScreen -> 204.dp
+            else -> 220.dp
+        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = verticalPad)
+                .heightIn(min = if (compact) 40.dp else 48.dp)
+                .then(rowClickModifier)
+                .padding(horizontal = if (compact) 0.dp else 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(if (smallScreen) 8.dp else 10.dp)
+        ) {
+            if (title.isNotBlank()) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        title,
+                        color = if (enabled) OnCardText else OnCardText.copy(alpha = 0.5f),
+                        modifier = Modifier.weight(1f),
+                        fontSize = titleFont,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Clip
+                    )
+                    if (onInfoClick != null) {
+                        Box(
+                            modifier = Modifier
+                                .size(if (compact) 18.dp else 20.dp)
+                                .clip(CircleShape)
+                                .background(OnCardText.copy(alpha = 0.10f))
+                                .border(1.dp, OnCardText.copy(alpha = 0.20f), CircleShape)
+                                .clickable {
+                                    SoundManager.playClick()
+                                    onInfoClick()
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            if (warningInfo) {
+                                Icon(
+                                    imageVector = Icons.Default.WarningAmber,
+                                    contentDescription = null,
+                                    tint = Color(0xFFE57373),
+                                    modifier = Modifier.size(if (compact) 10.dp else 12.dp)
+                                )
+                            } else {
+                                Text(
+                                    text = "!",
+                                    color = OnCardText.copy(alpha = 0.85f),
+                                    fontSize = if (compact) 10.sp else 11.sp,
+                                    fontWeight = FontWeight.Black
+                                )
+                            }
+                        }
+                    }
+                }
+            } else {
+                Spacer(Modifier.weight(1f))
+            }
+            Row(
+                modifier = Modifier
+                    .widthIn(min = controlMinWidth, max = controlMaxWidth)
+                    .clip(controlShape)
+                    .background(controlBg)
+                    .border(1.dp, controlBorder, controlShape)
+                    .padding(horizontal = if (compact) 4.dp else 6.dp, vertical = if (compact) 2.dp else 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                SettingsArrowChip(
+                    icon = Icons.AutoMirrored.Filled.ArrowBack,
+                    enabled = enabled,
+                    onDisabledClick = onDisabledControlClick
+                ) { onPrev() }
+                Text(
+                    valueLabel,
+                    color = if (enabled) OnCardText else OnCardText.copy(alpha = 0.45f),
+                    modifier = Modifier.weight(1f),
+                    textAlign = TextAlign.Center,
+                    fontSize = valueFont,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1
+                )
+                SettingsArrowChip(
+                    icon = Icons.AutoMirrored.Filled.ArrowForward,
+                    enabled = enabled,
+                    onDisabledClick = onDisabledControlClick
+                ) { onNext() }
+            }
         }
     }
 }
@@ -7051,12 +8045,18 @@ fun SettingsStepperRow(
     valueLabel: String,
     onDecrement: () -> Unit,
     onIncrement: () -> Unit,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    onInfoClick: (() -> Unit)? = null,
+    warningInfo: Boolean = false,
+    onDisabledControlClick: (() -> Unit)? = null
 ) {
     SettingsSelectorRow(
         title = title,
         valueLabel = valueLabel,
         enabled = enabled,
+        onInfoClick = onInfoClick,
+        warningInfo = warningInfo,
+        onDisabledControlClick = onDisabledControlClick,
         onPrev = onDecrement,
         onNext = onIncrement
     )
@@ -7114,7 +8114,7 @@ fun SettingsDropdownRow(
                 )
                 Icon(
                     imageVector = Icons.Default.KeyboardArrowDown,
-                    contentDescription = "Open options",
+                    contentDescription = stringResource(R.string.open_options_desc),
                     tint = accentForTheme().copy(alpha = 0.92f)
                 )
             }
@@ -7130,17 +8130,28 @@ fun SettingsDropdownRow(
 }
 
 @Composable
-fun SettingRow(title: String, value: Boolean, onChange: (Boolean) -> Unit, enabled: Boolean = true) {
+fun SettingRow(
+    title: String,
+    value: Boolean,
+    onChange: (Boolean) -> Unit,
+    enabled: Boolean = true,
+    onInfoClick: (() -> Unit)? = null,
+    warningInfo: Boolean = false,
+    onDisabledControlClick: (() -> Unit)? = null
+) {
     SettingsSelectorRow(
         title = title,
         valueLabel = if (value) "On" else "Off",
         enabled = enabled,
+        onInfoClick = onInfoClick,
+        warningInfo = warningInfo,
+        onDisabledControlClick = onDisabledControlClick,
         onPrev = { onChange(!value) },
         onNext = { onChange(!value) },
         onRowClick = { onChange(!value) }
     )
 }
-@Composable fun AchievementRow(a: Achievement, unlocked: Boolean, accentSoft: Color) { Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(if (unlocked) CardDarkBlue else CardDarkBlue.copy(alpha = 0.5f)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(44.dp).clip(CircleShape).background(if (unlocked) accentSoft else OnCardText.copy(alpha = 0.05f)), contentAlignment = Alignment.Center) { Text(if (unlocked) a.icon else "❓", fontSize = 22.sp) }; Spacer(Modifier.width(14.dp)); Column(modifier = Modifier.weight(1f)) { Text(text = a.title, color = if (unlocked) OnCardText else OnCardText.copy(alpha = 0.4f), fontWeight = FontWeight.Bold, fontSize = 15.sp); Text(text = a.description, color = if (unlocked) OnCardText.copy(alpha = 0.7f) else OnCardText.copy(alpha = 0.25f), fontSize = 12.sp) }; if (unlocked) { Icon(Icons.Default.CheckCircle, null, tint = accentSoft, modifier = Modifier.size(20.dp)) } } }
+@Composable fun AchievementRow(a: Achievement, unlocked: Boolean, accentSoft: Color) { Row(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(if (unlocked) CardDarkBlue else CardDarkBlue.scaleAlpha(0.5f)).padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Box(modifier = Modifier.size(44.dp).clip(CircleShape).background(if (unlocked) accentSoft else OnCardText.copy(alpha = 0.05f)), contentAlignment = Alignment.Center) { Text(if (unlocked) a.icon else "❓", fontSize = 22.sp) }; Spacer(Modifier.width(14.dp)); Column(modifier = Modifier.weight(1f)) { Text(text = a.title, color = if (unlocked) OnCardText else OnCardText.copy(alpha = 0.4f), fontWeight = FontWeight.Bold, fontSize = 15.sp); Text(text = a.description, color = if (unlocked) OnCardText.copy(alpha = 0.7f) else OnCardText.copy(alpha = 0.25f), fontSize = 12.sp) }; if (unlocked) { Icon(Icons.Default.CheckCircle, null, tint = accentSoft, modifier = Modifier.size(20.dp)) } } }
 @Composable fun HistoryRow(day: Long, entry: HistoryEntry, accentSoft: Color) {
     Row(
         modifier = Modifier
@@ -7153,7 +8164,7 @@ fun SettingRow(title: String, value: Boolean, onChange: (Boolean) -> Unit, enabl
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(formatEpochDayFull(day), color = OnCardText, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-            Text("${entry.done}/${entry.total} quests", color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp)
+            Text(stringResource(R.string.history_quests_count, entry.done, entry.total), color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp)
         }
         Box(modifier = Modifier.clip(RoundedCornerShape(999.dp)).background(if (entry.allDone) accentSoft else ProgressTrack).padding(horizontal = 9.dp, vertical = 5.dp)) {
             Text(text = if (entry.allDone) "Completed" else "Missed", color = OnCardText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -7198,7 +8209,7 @@ fun XpBar(
         if (showValue) {
             Spacer(Modifier.height(if (compact) 6.dp else 10.dp))
             Text(
-                text = "${levelInfo.currentXpInLevel} / ${levelInfo.xpForNextLevel} XP",
+                text = stringResource(R.string.xp_progress_line, levelInfo.currentXpInLevel, levelInfo.xpForNextLevel),
                 color = OnCardText.copy(alpha = 0.85f),
                 fontSize = 12.sp,
                 modifier = Modifier.align(Alignment.End)
@@ -7214,6 +8225,9 @@ fun QuestCard(
     accentSoft: Color,
     onClaimQuest: () -> Unit,
     onProgress: (Int) -> Unit,
+    onTimerTick: (Int) -> Unit = {},
+    onTimerComplete: (Int) -> Unit = {},
+    onTimerPause: () -> Unit = {},
     modifier: Modifier = Modifier,
     uiScale: Float = 1f,
     alwaysShowProgress: Boolean = false
@@ -7228,16 +8242,23 @@ fun QuestCard(
     val current = quest.currentProgress
     val displayProgress = current.coerceAtMost(target)
     var timerRunning by rememberSaveable(quest.id) { mutableStateOf(false) }
+    val currentOnTimerTick by rememberUpdatedState(onTimerTick)
+    val currentOnTimerComplete by rememberUpdatedState(onTimerComplete)
+    val currentTarget by rememberUpdatedState(target)
+    val currentCompleted by rememberUpdatedState(quest.completed)
 
-    LaunchedEffect(timerRunning, quest.id, quest.completed, current, target, isTimerQuest) {
-        if (!isTimerQuest || !timerRunning || quest.completed) return@LaunchedEffect
-        while (timerRunning && !quest.completed) {
+    LaunchedEffect(timerRunning, quest.id, isTimerQuest) {
+        if (!isTimerQuest || !timerRunning || currentCompleted) return@LaunchedEffect
+        var tick = quest.currentProgress
+        while (timerRunning && !currentCompleted) {
             delay(1000)
-            val latest = (current + 1).coerceAtMost(target + 1)
-            onProgress(latest)
-            if (latest >= target) {
+            tick = (tick + 1).coerceAtMost(currentTarget + 1)
+            if (tick >= currentTarget) {
+                currentOnTimerComplete((currentTarget + 1).coerceAtMost(tick))
                 timerRunning = false
                 break
+            } else {
+                currentOnTimerTick(tick)
             }
         }
     }
@@ -7288,9 +8309,9 @@ fun QuestCard(
 
     val bgBrush = when {
         isDone && isLightTheme -> Brush.verticalGradient(listOf(Color(0xFFF8FAFD), Color(0xFFF1F4F8)))
-        isDone -> Brush.verticalGradient(listOf(CardDarkBlue.copy(alpha = 0.94f), CardDarkBlue.copy(alpha = 0.88f)))
+        isDone -> Brush.verticalGradient(listOf(CardDarkBlue.scaleAlpha(0.94f), CardDarkBlue.scaleAlpha(0.88f)))
         isLightTheme -> Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xFFF5F8FC)))
-        else -> Brush.verticalGradient(listOf(CardDarkBlue.copy(alpha = 0.95f), CardDarkBlue.copy(alpha = 0.75f)))
+        else -> Brush.verticalGradient(listOf(CardDarkBlue.scaleAlpha(0.95f), CardDarkBlue.scaleAlpha(0.75f)))
     }
     val questBorderColor = when {
         !neonBordersEnabled -> Color.Transparent
@@ -7383,7 +8404,7 @@ fun QuestCard(
                         isDone -> OnCardText.copy(alpha = 0.52f)
                         else -> OnCardText.copy(alpha = 0.9f)
                     }
-                    Text(text = "${quest.xpReward} XP", color = xpColor, fontSize = (11f * uiScale).sp, fontWeight = FontWeight.ExtraBold)
+                    Text(text = stringResource(R.string.quest_card_xp, quest.xpReward), color = xpColor, fontSize = (11f * uiScale).sp, fontWeight = FontWeight.ExtraBold)
                     if (!isDone && (target != 2 || alwaysShowProgress || isTimerQuest)) {
                         Spacer(Modifier.width(8.dp))
                         Text(progressLabel, color = OnCardText.copy(alpha = 0.6f), fontSize = (10f * uiScale).sp)
@@ -7402,9 +8423,11 @@ fun QuestCard(
                             text = if (timerRunning) "PAUSE" else if (current <= 0) "START" else "RESUME",
                             enabled = true,
                             accentSoft = if (timerRunning) accentSoft else accentStrong,
+                            showShadow = true,
                             onClick = {
+                                val wasRunning = timerRunning
                                 timerRunning = !timerRunning
-                                if (!timerRunning && current <= 0) onProgress(1)
+                                if (wasRunning && !timerRunning) onTimerPause()
                             }
                         )
                         SmallActionPill(
@@ -7413,6 +8436,7 @@ fun QuestCard(
                             accentSoft = accentSoft,
                             onClick = {
                                 timerRunning = false
+                                onTimerPause()
                                 onProgress(0)
                             }
                         )
@@ -7448,6 +8472,7 @@ fun QuestCard(
                             text = btnText,
                             enabled = true,
                             accentSoft = btnColor,
+                            showShadow = isTextButton,
                             modifier = actionModifier.graphicsLayer {
                                 if (isClaiming) {
                                     scaleX = claimPulseScale
@@ -7469,7 +8494,7 @@ fun QuestCard(
                         )
                         if (isClaiming) {
                             Text(
-                                text = "+${quest.xpReward}",
+                                text = stringResource(R.string.plus_value_n, quest.xpReward),
                                 color = OnCardText,
                                 fontSize = (10f * uiScale).sp,
                                 fontWeight = FontWeight.Black,
@@ -7509,18 +8534,20 @@ fun SmallActionPill(
     accentSoft: Color,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    contentColor: Color = Color.Unspecified
+    contentColor: Color = Color.Unspecified,
+    showShadow: Boolean = false
 ) {
     val shape = RoundedCornerShape(12.dp)
     val isLightTheme = ThemeRuntime.currentTheme.isLightCategory()
+    val buttonAlpha = (1f - ThemeRuntime.buttonTransparencyPercent.coerceIn(0, 100) / 100f).coerceIn(0f, 1f)
     val containerColor = if (enabled) {
         if (isLightTheme) {
-            mixForBackground(accentSoft, Color.White).copy(alpha = 0.94f)
+            mixForBackground(accentSoft, Color.White).copy(alpha = 0.94f * buttonAlpha)
         } else {
-            mixForBackground(accentSoft, CardDarkBlue).copy(alpha = 0.90f)
+            mixForBackground(accentSoft, CardDarkBlue).copy(alpha = 0.90f * buttonAlpha)
         }
     } else {
-        OnCardText.copy(alpha = 0.10f)
+        OnCardText.copy(alpha = 0.10f * buttonAlpha)
     }
     val resolvedContentColor = when {
         !enabled -> OnCardText.copy(alpha = 0.45f)
@@ -7532,6 +8559,19 @@ fun SmallActionPill(
     Box(
         modifier = modifier // Apply the width here
             .heightIn(min = 0.dp)
+            .then(
+                if (enabled && showShadow) {
+                    Modifier.shadow(
+                        elevation = 6.dp,
+                        shape = shape,
+                        ambientColor = accentSoft.copy(alpha = 0.28f),
+                        spotColor = accentSoft.copy(alpha = 0.36f),
+                        clip = false
+                    )
+                } else {
+                    Modifier
+                }
+            )
             .clip(shape)
             .background(containerColor, shape = shape)
             .clickable(enabled = enabled) { onClick() }
@@ -7633,7 +8673,7 @@ fun FocusTimerDialog(accentStrong: Color, accentSoft: Color, onDismiss: () -> Un
     AlertDialog(
         onDismissRequest = { if (!isRunning) onDismiss() },
         containerColor = dialogContainer,
-        title = { Text("Deep Focus", color = accentStrong, fontWeight = FontWeight.Bold) },
+        title = { Text(stringResource(R.string.deep_focus_title), color = accentStrong, fontWeight = FontWeight.Bold) },
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (!isRunning && !inBreak) {
@@ -7642,7 +8682,7 @@ fun FocusTimerDialog(accentStrong: Color, accentSoft: Color, onDismiss: () -> Un
                             FilterChip(
                                 selected = presetMinutes == minutes,
                                 onClick = { presetMinutes = minutes },
-                                label = { Text("$minutes min") },
+                                label = { Text(stringResource(R.string.minutes_min_label, minutes)) },
                                 colors = FilterChipDefaults.filterChipColors(
                                     selectedContainerColor = chipSelectedContainer,
                                     selectedLabelColor = chipSelectedLabel,
@@ -7661,13 +8701,13 @@ fun FocusTimerDialog(accentStrong: Color, accentSoft: Color, onDismiss: () -> Un
                 }
                 Text(fmtTime, fontSize = 48.sp, fontWeight = FontWeight.Black, color = OnCardText, letterSpacing = 2.sp)
                 Text(
-                    if (inBreak) "Break mode: recover, then continue." else "Earn 1 XP per minute + cycle bonuses.",
+                    if (inBreak) stringResource(R.string.deep_focus_break_mode) else stringResource(R.string.deep_focus_earn_xp_hint),
                     color = dialogSubText,
                     fontSize = 12.sp
                 )
-                Text("Cycles: $completedCycles • Interruptions: $interruptions", color = dialogSubText, fontSize = 12.sp)
+                Text(stringResource(R.string.deep_focus_cycles_interruptions, completedCycles, interruptions), color = dialogSubText, fontSize = 12.sp)
                 if (sessionXp > 0) {
-                    Text("Current Reward: +$sessionXp XP", color = accentStrong, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.deep_focus_current_reward, sessionXp), color = accentStrong, fontWeight = FontWeight.Bold)
                 }
             }
         },
@@ -7680,7 +8720,7 @@ fun FocusTimerDialog(accentStrong: Color, accentSoft: Color, onDismiss: () -> Un
                         onComplete(sessionXp)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = stopButtonColor)
-                ) { Text("Stop & Claim", color = Color.White) }
+                ) { Text(stringResource(R.string.l10n_stop_claim), color = Color.White) }
             } else {
                 Button(
                     onClick = {
@@ -7695,7 +8735,7 @@ fun FocusTimerDialog(accentStrong: Color, accentSoft: Color, onDismiss: () -> Un
         },
         dismissButton = {
             if (!isRunning) {
-                TextButton(onClick = onDismiss) { Text("Close", color = OnCardText) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.close), color = OnCardText) }
             }
         }
     )
@@ -7711,7 +8751,7 @@ fun BossSection(boss: Boss, accentStrong: Color, uiScale: Float) {
         Column(modifier = Modifier.weight(1f)) {
             Row(horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
                 Text(boss.name, color = Color(0xFFFF5252), fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                Text("${boss.currentHp}/${boss.totalHp}", color = Color(0xFFFF5252).copy(alpha=0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.boss_hp_progress, boss.currentHp, boss.totalHp), color = Color(0xFFFF5252).copy(alpha=0.7f), fontSize = 10.sp, fontWeight = FontWeight.Bold)
             }
             Spacer(Modifier.height(6.dp))
             Box(modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape).background(Color.Black.copy(alpha = 0.5f))) { Box(modifier = Modifier.fillMaxHeight().fillMaxWidth(progress).background(Brush.horizontalGradient(listOf(Color(0xFFD32F2F), Color(0xFFFF5252))))) }
@@ -7753,7 +8793,7 @@ fun CharacterView(data: CharacterData, scale: Float = 1f) {
 fun CharacterEditorDialog(initial: CharacterData, accentStrong: Color, onSave: (CharacterData) -> Unit, onDismiss: () -> Unit) {
     var head by remember { mutableLongStateOf(initial.headColor) }; var body by remember { mutableLongStateOf(initial.bodyColor) }; var legs by remember { mutableLongStateOf(initial.legsColor) }; var shoes by remember { mutableLongStateOf(initial.shoesColor) }
     val colors = listOf(0xFFFACE8D, 0xFF8D5524, 0xFFC68642, 0xFFE0AC69, 0xFFF44336, 0xFFE91E63, 0xFF9C27B0, 0xFF3F51B5, 0xFF2196F3, 0xFF00BCD4, 0xFF4CAF50, 0xFF8BC34A, 0xFFFFEB3B, 0xFFFF9800, 0xFF795548, 0xFF9E9E9E, 0xFF607D8B, 0xFF000000, 0xFFFFFFFF)
-    AlertDialog(onDismissRequest = onDismiss, containerColor = CardDarkBlue, title = { Text("Customize Hero", color = OnCardText, fontWeight = FontWeight.Bold) }, text = { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) { CharacterView(CharacterData(head, body, legs, shoes), scale = 3f); ColorPickerRow("Skin", colors, head) { head = it }; ColorPickerRow("Shirt", colors, body) { body = it }; ColorPickerRow("Pants", colors, legs) { legs = it }; ColorPickerRow("Shoes", colors, shoes) { shoes = it } } }, confirmButton = { TextButton(onClick = { onSave(CharacterData(head, body, legs, shoes)) }) { Text("Save Look", color = accentStrong, fontWeight = FontWeight.Bold) } })
+    AlertDialog(onDismissRequest = onDismiss, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.character_customize_hero), color = OnCardText, fontWeight = FontWeight.Bold) }, text = { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) { CharacterView(CharacterData(head, body, legs, shoes), scale = 3f); ColorPickerRow("Skin", colors, head) { head = it }; ColorPickerRow("Shirt", colors, body) { body = it }; ColorPickerRow("Pants", colors, legs) { legs = it }; ColorPickerRow("Shoes", colors, shoes) { shoes = it } } }, confirmButton = { TextButton(onClick = { onSave(CharacterData(head, body, legs, shoes)) }) { Text(stringResource(R.string.character_save_look), color = accentStrong, fontWeight = FontWeight.Bold) } })
 }
 
 @Composable
@@ -7838,7 +8878,7 @@ fun ShopItemRow(
             Spacer(Modifier.width(10.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(item.name, color = OnCardText, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                Text("${item.cost} G  •  stock ${item.stock}/${item.maxStock}", color = OnCardText.copy(alpha = 0.55f), fontSize = 12.sp)
+                Text(stringResource(R.string.shop_cost_stock_line, item.cost, item.stock, item.maxStock), color = OnCardText.copy(alpha = 0.55f), fontSize = 12.sp)
             }
             Button(
                 onClick = onBuy,
@@ -7876,21 +8916,21 @@ fun ShopItemEditorDialog(accentStrong: Color, initial: ShopItem?, onSave: (ShopI
         title = { Text(if (initial == null) "Create Shop Item" else "Edit Shop Item", color = accentStrong, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
-                OutlinedTextField(value = icon, onValueChange = { icon = it.take(2) }, label = { Text("Icon") }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.shop_name_label)) }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                OutlinedTextField(value = icon, onValueChange = { icon = it.take(2) }, label = { Text(stringResource(R.string.shop_icon_label)) }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Button(
                         onClick = { imagePicker.launch(arrayOf("image/*")) },
                         colors = ButtonDefaults.buttonColors(containerColor = accentStrong)
-                    ) { Text(if (imageUri.isBlank()) "Pick image" else "Change image", color = readableTextColor(accentStrong)) }
+                    ) { Text(if (imageUri.isBlank()) stringResource(R.string.pick_image) else stringResource(R.string.change_image), color = readableTextColor(accentStrong)) }
                     if (imageUri.isNotBlank()) {
-                        TextButton(onClick = { imageUri = "" }) { Text("Clear", color = OnCardText) }
+                        TextButton(onClick = { imageUri = "" }) { Text(stringResource(R.string.clear), color = OnCardText) }
                     }
                 }
                 if (imageUri.isNotBlank()) {
                     AsyncImage(
                         model = imageUri,
-                        contentDescription = "Item image preview",
+                        contentDescription = stringResource(R.string.item_image_preview_desc),
                         modifier = Modifier
                             .size(56.dp)
                             .clip(RoundedCornerShape(10.dp))
@@ -7898,15 +8938,15 @@ fun ShopItemEditorDialog(accentStrong: Color, initial: ShopItem?, onSave: (ShopI
                         contentScale = ContentScale.Crop
                     )
                 }
-                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description") }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
-                OutlinedTextField(value = cost, onValueChange = { if (it.all(Char::isDigit)) cost = it }, label = { Text("Cost (gold)") }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text(stringResource(R.string.shop_description_label)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                OutlinedTextField(value = cost, onValueChange = { if (it.all(Char::isDigit)) cost = it }, label = { Text(stringResource(R.string.shop_cost_gold)) }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    OutlinedTextField(value = stock, onValueChange = { if (it.all(Char::isDigit)) stock = it }, label = { Text("Stock") }, singleLine = true, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
-                    OutlinedTextField(value = maxStock, onValueChange = { if (it.all(Char::isDigit)) maxStock = it }, label = { Text("Max") }, singleLine = true, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                    OutlinedTextField(value = stock, onValueChange = { if (it.all(Char::isDigit)) stock = it }, label = { Text(stringResource(R.string.shop_stock_label)) }, singleLine = true, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                    OutlinedTextField(value = maxStock, onValueChange = { if (it.all(Char::isDigit)) maxStock = it }, label = { Text(stringResource(R.string.shop_max_label)) }, singleLine = true, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { isConsumable = !isConsumable }) {
                     Checkbox(checked = isConsumable, onCheckedChange = { isConsumable = it }, colors = CheckboxDefaults.colors(checkedColor = accentStrong))
-                    Text("Consumable item", color = OnCardText, fontSize = 13.sp)
+                    Text(stringResource(R.string.shop_consumable_item), color = OnCardText, fontSize = 13.sp)
                 }
             }
         },
@@ -7924,9 +8964,9 @@ fun ShopItemEditorDialog(accentStrong: Color, initial: ShopItem?, onSave: (ShopI
                     imageUri = imageUri.ifBlank { null }
                 )
                 onSave(item)
-            }) { Text("Save", color = accentStrong) }
+            }) { Text(stringResource(R.string.save), color = accentStrong) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = OnCardText) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), color = OnCardText) } }
     )
 }
 
@@ -7955,7 +8995,8 @@ fun DashboardScreen(
     } else 0
     val totalPerfectDays = history.values.count { it.allDone }
     val achievedCount = remember(unlockedAchievementIds) { unlockedAchievementIds.size }
-    val achievementTitleById = remember { getAchievementDefinitions().associate { it.id to it.title } }
+    val achievementDefinitions = remember { getAchievementDefinitions() }
+    val achievementById = remember(achievementDefinitions) { achievementDefinitions.associateBy { it.id } }
     val recentHistory = remember(history) { history.toList().sortedByDescending { it.first }.take(6) }
     val sortedDays = remember(history) { history.toList().sortedByDescending { it.first } }
     val last7Days = remember(sortedDays) { sortedDays.take(7) }
@@ -8020,7 +9061,7 @@ fun DashboardScreen(
     ScalableScreen(modifier) { uiScale ->
         Column(verticalArrangement = Arrangement.spacedBy((12.dp * uiScale))) {
             ScalableHeader(stringResource(R.string.title_dashboard), uiScale, onOpenDrawer, showMenu = true) {
-                IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, null, tint = OnCardText, modifier = Modifier.size(24.dp * uiScale)) }
+                IconButton(onClick = onOpenSettings) { Icon(Icons.Default.Settings, null, tint = OnCardIcon, modifier = Modifier.size(24.dp * uiScale)) }
             }
 
             Column(modifier = Modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -8033,8 +9074,8 @@ fun DashboardScreen(
                         }
                         Spacer(Modifier.width(16.dp))
                         Column(modifier = Modifier.weight(1f)) {
-                            Text("LEVEL ${levelInfo.level} HERO", color = OnCardText, fontWeight = FontWeight.Black, fontSize = 16.sp, letterSpacing = 1.sp)
-                            Text("$gold Gold • $streak Day Streak", color = OnCardText.copy(alpha=0.6f), fontSize = 13.sp)
+                            Text(stringResource(R.string.dashboard_hero_level, levelInfo.level), color = OnCardText, fontWeight = FontWeight.Black, fontSize = 16.sp, letterSpacing = 1.sp)
+                            Text(stringResource(R.string.dashboard_gold_streak, gold, streak), color = OnCardText.copy(alpha=0.6f), fontSize = 13.sp)
                             Spacer(Modifier.height(8.dp))
                             XpBar(levelInfo, accentStrong, showContainer = false)
                         }
@@ -8043,21 +9084,21 @@ fun DashboardScreen(
 
                 // 2. Health Snapshot
                 CardBlock {
-                    Text("HEALTH SNAPSHOT", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(stringResource(R.string.l10n_health_snapshot), color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(6.dp))
                     val today = healthSnapshot
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        StatTile(Icons.Default.DirectionsWalk, "Steps", "${today?.steps ?: 0}", Color(0xFF66BB6A), Modifier.weight(1f))
-                        StatTile(Icons.Default.Favorite, "Heart", "${today?.avgHeartRate ?: 0}", Color(0xFFEF5350), Modifier.weight(1f))
+                        StatTile(Icons.Default.DirectionsWalk, stringResource(R.string.l10n_steps), "${today?.steps ?: 0}", Color(0xFF66BB6A), Modifier.weight(1f))
+                        StatTile(Icons.Default.Favorite, stringResource(R.string.dashboard_heart), "${today?.avgHeartRate ?: 0}", Color(0xFFEF5350), Modifier.weight(1f))
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        StatTile(Icons.Default.Timeline, "Distance", "${(today?.distanceMeters ?: 0f).toInt()}m", Color(0xFF42A5F5), Modifier.weight(1f))
-                        StatTile(Icons.Default.LocalFireDepartment, "Calories", "${(today?.caloriesKcal ?: 0f).toInt()}", Color(0xFFFFA726), Modifier.weight(1f))
+                        StatTile(Icons.Default.Timeline, stringResource(R.string.l10n_distance_m), stringResource(R.string.target_meters_short, (today?.distanceMeters ?: 0f).toInt()), Color(0xFF42A5F5), Modifier.weight(1f))
+                        StatTile(Icons.Default.LocalFireDepartment, stringResource(R.string.l10n_calories), "${(today?.caloriesKcal ?: 0f).toInt()}", Color(0xFFFFA726), Modifier.weight(1f))
                     }
                     Spacer(Modifier.height(8.dp))
                     var showManual by remember { mutableStateOf(false) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-                        OutlinedButton(onClick = { showManual = true }, modifier = Modifier.weight(1f)) { Text("Manual Update") }
+                        OutlinedButton(onClick = { showManual = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.l10n_manual_update)) }
                         OutlinedButton(
                             onClick = {
                                 when (HealthConnectReader.sdkStatus(context)) {
@@ -8089,7 +9130,7 @@ fun DashboardScreen(
                                 }
                             },
                             modifier = Modifier.weight(1f)
-                        ) { Text("Sync Health") }
+                        ) { Text(stringResource(R.string.l10n_sync_health)) }
                     }
                     if (!healthSyncStatus.isNullOrBlank()) {
                         Text(healthSyncStatus.orEmpty(), color = OnCardText.copy(alpha = 0.68f), fontSize = 11.sp)
@@ -8102,13 +9143,13 @@ fun DashboardScreen(
                         AlertDialog(
                             onDismissRequest = { showManual = false },
                             containerColor = CardDarkBlue,
-                            title = { Text("Manual Health Update", color = OnCardText) },
+                            title = { Text(stringResource(R.string.l10n_manual_health_update), color = OnCardText) },
                             text = {
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    OutlinedTextField(steps, { if (it.all(Char::isDigit)) steps = it }, label = { Text("Steps") }, singleLine = true)
-                                    OutlinedTextField(hr, { if (it.all(Char::isDigit)) hr = it }, label = { Text("Avg Heart Rate") }, singleLine = true)
-                                    OutlinedTextField(dist, { if (it.all(Char::isDigit)) dist = it }, label = { Text("Distance (m)") }, singleLine = true)
-                                    OutlinedTextField(cal, { if (it.all(Char::isDigit)) cal = it }, label = { Text("Calories") }, singleLine = true)
+                                    OutlinedTextField(steps, { if (it.all(Char::isDigit)) steps = it }, label = { Text(stringResource(R.string.l10n_steps)) }, singleLine = true)
+                                    OutlinedTextField(hr, { if (it.all(Char::isDigit)) hr = it }, label = { Text(stringResource(R.string.l10n_avg_heart_rate)) }, singleLine = true)
+                                    OutlinedTextField(dist, { if (it.all(Char::isDigit)) dist = it }, label = { Text(stringResource(R.string.l10n_distance_m)) }, singleLine = true)
+                                    OutlinedTextField(cal, { if (it.all(Char::isDigit)) cal = it }, label = { Text(stringResource(R.string.l10n_calories)) }, singleLine = true)
                                 }
                             },
                             confirmButton = {
@@ -8124,34 +9165,34 @@ fun DashboardScreen(
                                         )
                                     )
                                     showManual = false
-                                }) { Text("Save", color = accentStrong) }
+                                }) { Text(stringResource(R.string.save), color = accentStrong) }
                             },
-                            dismissButton = { TextButton(onClick = { showManual = false }) { Text("Cancel", color = OnCardText) } }
+                            dismissButton = { TextButton(onClick = { showManual = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
                         )
                     }
                 }
 
                 // 3. Lifetime Stats
                 CardBlock {
-                    Text("LIFETIME STATS", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(stringResource(R.string.dashboard_lifetime_stats), color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(4.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            StatTile(Icons.Default.CheckCircle, "Total Quests", "$totalQuestsDone", accentStrong, Modifier.weight(1f))
-                            StatTile(Icons.Default.DateRange, "Days Active", "$daysActive", Color(0xFF29B6F6), Modifier.weight(1f))
+                            StatTile(Icons.Default.CheckCircle, stringResource(R.string.dashboard_total_quests), "$totalQuestsDone", accentStrong, Modifier.weight(1f))
+                            StatTile(Icons.Default.DateRange, stringResource(R.string.dashboard_days_active), "$daysActive", Color(0xFF29B6F6), Modifier.weight(1f))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            StatTile(Icons.Default.DataUsage, "Completion", "$avgCompletion%", Color(0xFF66BB6A), Modifier.weight(1f))
-                            StatTile(Icons.Default.Star, "Perfect Days", "$totalPerfectDays", Color(0xFFFFCA28), Modifier.weight(1f))
+                            StatTile(Icons.Default.DataUsage, stringResource(R.string.dashboard_completion), stringResource(R.string.value_percent, avgCompletion), Color(0xFF66BB6A), Modifier.weight(1f))
+                            StatTile(Icons.Default.Star, stringResource(R.string.dashboard_perfect_days), "$totalPerfectDays", Color(0xFFFFCA28), Modifier.weight(1f))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            StatTile(Icons.Default.Timeline, "7-Day Avg", "$recent7Avg%", Color(0xFF80CBC4), Modifier.weight(1f))
+                            StatTile(Icons.Default.Timeline, stringResource(R.string.dashboard_7_day_avg), stringResource(R.string.value_percent, recent7Avg), Color(0xFF80CBC4), Modifier.weight(1f))
                             @Suppress("DEPRECATION")
-                            StatTile(Icons.Default.TrendingUp, "30-Day Avg", "$recent30Avg%", Color(0xFF81C784), Modifier.weight(1f))
+                            StatTile(Icons.Default.TrendingUp, stringResource(R.string.dashboard_30_day_avg), stringResource(R.string.value_percent, recent30Avg), Color(0xFF81C784), Modifier.weight(1f))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            StatTile(Icons.Default.Bolt, "Perfect Streak", "$currentPerfectStreak", Color(0xFFFFB74D), Modifier.weight(1f))
-                            StatTile(Icons.Default.EmojiEvents, "Achievements", "$achievedCount", Color(0xFFBA68C8), Modifier.weight(1f))
+                            StatTile(Icons.Default.Bolt, stringResource(R.string.dashboard_perfect_streak), "$currentPerfectStreak", Color(0xFFFFB74D), Modifier.weight(1f))
+                            StatTile(Icons.Default.EmojiEvents, stringResource(R.string.dashboard_achievements), "$achievedCount", Color(0xFFBA68C8), Modifier.weight(1f))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             StatTile(Icons.Default.EventAvailable, "Best Day", bestWeekday, Color(0xFF4FC3F7), Modifier.weight(1f))
@@ -8162,7 +9203,7 @@ fun DashboardScreen(
 
                 // 3. Attribute Matrix
                 CardBlock {
-                    Text("ATTRIBUTE MATRIX", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(stringResource(R.string.dashboard_attribute_matrix), color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(6.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         AttributeRow("Strength", attributes.str)
@@ -8175,10 +9216,10 @@ fun DashboardScreen(
 
                 // 4. Analytics
                 CardBlock {
-                    Text("7-DAY TREND", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(stringResource(R.string.dashboard_7_day_trend), color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(8.dp))
                     if (trendPoints.isEmpty()) {
-                        Text("No trend data yet.", color = OnCardText.copy(alpha = 0.6f), fontSize = 12.sp)
+                        Text(stringResource(R.string.dashboard_no_trend_data), color = OnCardText.copy(alpha = 0.6f), fontSize = 12.sp)
                     } else {
                         TrendLineChart(
                             points = trendPoints,
@@ -8186,11 +9227,11 @@ fun DashboardScreen(
                             accentSoft = accentSoft,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(110.dp)
+                                .height(128.dp)
                         )
                     }
                     Spacer(Modifier.height(10.dp))
-                    Text("30-DAY HEATMAP", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(stringResource(R.string.dashboard_30_day_heatmap), color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(6.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
                         heatmapLast30.forEach { ratio ->
@@ -8206,22 +9247,51 @@ fun DashboardScreen(
 
                 // 5. Achievements
                 CardBlock {
-                    Text("ACHIEVEMENTS", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(stringResource(R.string.dashboard_achievements_caps), color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(6.dp))
-                    Text("Unlocked: $achievedCount / ${getAchievementDefinitions().size}", color = accentStrong, fontWeight = FontWeight.Bold)
-                    Text(
-                        unlockedAchievementIds.mapNotNull { achievementTitleById[it] }.take(4).joinToString(", ").ifBlank { "No achievements yet" },
-                        color = OnCardText.copy(alpha = 0.75f),
-                        fontSize = 12.sp
-                    )
+                    val unlockedAchievements = unlockedAchievementIds.mapNotNull { achievementById[it] }
+                    if (unlockedAchievements.isEmpty()) {
+                        Text(stringResource(R.string.l10n_no_achievements_unlocked_yet), color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp)
+                    } else {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            unlockedAchievements.forEach { achievement ->
+                                Column(
+                                    modifier = Modifier
+                                        .widthIn(min = 64.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(Color.Black.copy(alpha = 0.14f))
+                                        .border(1.dp, accentSoft.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(achievement.icon, fontSize = 20.sp)
+                                    Text(
+                                        achievement.title,
+                                        color = OnCardText.copy(alpha = 0.86f),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 // 6. Recent History
                 CardBlock {
-                    Text("RECENT HISTORY", color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
+                    Text(stringResource(R.string.dashboard_recent_history), color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(6.dp))
                     if (recentHistory.isEmpty()) {
-                        Text("No recent history yet.", color = OnCardText.copy(alpha = 0.6f), fontSize = 12.sp)
+                        Text(stringResource(R.string.dashboard_no_recent_history), color = OnCardText.copy(alpha = 0.6f), fontSize = 12.sp)
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             recentHistory.forEach { (day, entry) -> HistoryRow(day, entry, accentSoft) }
@@ -8261,40 +9331,80 @@ fun TrendLineChart(
     modifier: Modifier = Modifier
 ) {
     val safe = points.map { it.coerceIn(0f, 1f) }
+    if (safe.size < 3) {
+        Box(
+            modifier = modifier
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color.Black.copy(alpha = 0.12f))
+                .border(1.dp, accentSoft.copy(alpha = 0.28f), RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Icon(
+                    imageVector = Icons.Default.ShowChart,
+                    contentDescription = null,
+                    tint = accentSoft.copy(alpha = 0.7f),
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(stringResource(R.string.l10n_we_need_more_data_to_draw_this_chart_check),
+                    color = OnCardText.copy(alpha = 0.9f),
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+        return
+    }
     val lineColor = accentStrong.copy(alpha = 0.95f)
     val fillColor = accentSoft.copy(alpha = 0.20f)
-    Canvas(
+    Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .background(Color.Black.copy(alpha = 0.12f))
             .border(1.dp, accentSoft.copy(alpha = 0.28f), RoundedCornerShape(12.dp))
-            .padding(horizontal = 10.dp, vertical = 10.dp)
     ) {
-        if (safe.isEmpty()) return@Canvas
-        val stepX = if (safe.size <= 1) 0f else size.width / (safe.size - 1).toFloat()
-        val pointsPath = Path()
-        val fillPath = Path()
-        safe.forEachIndexed { i, v ->
-            val x = i * stepX
-            val y = size.height - (v * size.height)
-            if (i == 0) {
-                pointsPath.moveTo(x, y)
-                fillPath.moveTo(x, size.height)
-                fillPath.lineTo(x, y)
-            } else {
-                pointsPath.lineTo(x, y)
-                fillPath.lineTo(x, y)
+        Canvas(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 10.dp, vertical = 10.dp)
+        ) {
+            if (safe.isEmpty()) return@Canvas
+            val gridColor = OnCardText.copy(alpha = 0.08f)
+            val hStep = size.height / 4f
+            for (i in 0..4) {
+                val y = i * hStep
+                drawLine(
+                    color = gridColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f
+                )
             }
-        }
-        fillPath.lineTo(size.width, size.height)
-        fillPath.close()
 
-        drawPath(path = fillPath, color = fillColor)
-        drawPath(path = pointsPath, color = lineColor, style = Stroke(width = 4f, cap = StrokeCap.Round, join = StrokeJoin.Round))
-        safe.forEachIndexed { i, v ->
-            val x = i * stepX
-            val y = size.height - (v * size.height)
-            drawCircle(color = lineColor, radius = 5f, center = Offset(x, y))
+            val stepX = if (safe.size <= 1) 0f else size.width / (safe.size - 1).toFloat()
+            val anchors = safe.mapIndexed { i, v -> Offset(i * stepX, size.height - (v * size.height)) }
+            val linePath = Path().apply {
+                moveTo(anchors.first().x, anchors.first().y)
+                for (i in 1 until anchors.size) {
+                    val prev = anchors[i - 1]
+                    val cur = anchors[i]
+                    val midX = (prev.x + cur.x) / 2f
+                    cubicTo(midX, prev.y, midX, cur.y, cur.x, cur.y)
+                }
+            }
+            val fillPath = Path().apply {
+                addPath(linePath)
+                lineTo(anchors.last().x, size.height)
+                lineTo(anchors.first().x, size.height)
+                close()
+            }
+
+            drawPath(path = fillPath, color = fillColor)
+            drawPath(path = linePath, color = lineColor, style = Stroke(width = 3.5f, cap = StrokeCap.Round, join = StrokeJoin.Round))
+            anchors.forEach { pt ->
+                drawCircle(color = lineColor, radius = 4.2f, center = pt)
+            }
         }
     }
 }
@@ -8380,9 +9490,9 @@ fun MainQuestItem(
                     val statusText = when {
                         isLocked -> ""
                         quest.isClaimed -> ""
-                        isReadyToClaim -> "Ready to Claim!"
-                        !quest.hasStarted -> "Tap to Start"
-                        else -> "Step ${quest.currentStep + 1}/${quest.steps.size.coerceAtLeast(1)}"
+                        isReadyToClaim -> stringResource(R.string.main_status_ready_to_claim)
+                        !quest.hasStarted -> stringResource(R.string.main_status_tap_to_start)
+                        else -> stringResource(R.string.main_status_step_progress, quest.currentStep + 1, quest.steps.size.coerceAtLeast(1))
                     }
                     if (statusText.isNotBlank()) {
                         Spacer(Modifier.height(2.dp))
@@ -8421,7 +9531,7 @@ fun MainQuestItem(
                         .padding(horizontal = 10.dp, vertical = 8.dp)
                 ) {
                     Text(
-                        "Locked: Complete '${lockedByTitle ?: "previous quest"}'",
+                        lockedByTitle?.let { stringResource(R.string.locked_prereq, it) } ?: stringResource(R.string.locked_prereq_generic),
                         color = OnCardText.copy(alpha = 0.75f),
                         fontSize = 12.sp
                     )
@@ -8440,7 +9550,7 @@ fun MainQuestItem(
 
                     if (!quest.hasStarted) {
                         Button(onClick = { SoundManager.playAccept(); onOpenWizard() }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong), modifier = Modifier.fillMaxWidth()) {
-                            Text("START QUEST", color = readableTextColor(accentStrong), fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.start_quest_btn), color = readableTextColor(accentStrong), fontWeight = FontWeight.Bold)
                         }
                     }
                     else if (!isReadyToClaim) {
@@ -8463,7 +9573,7 @@ fun MainQuestItem(
                     }
                     else {
                         Button(onClick = { SoundManager.playClick(); onOpenWizard() }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong), modifier = Modifier.fillMaxWidth()) {
-                            Text("FINISH", color = readableTextColor(accentStrong), fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.l10n_finish), color = readableTextColor(accentStrong), fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -8480,7 +9590,7 @@ fun MainQuestItem(
                                 .padding(vertical = 10.dp),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("Tap to Reset Progress", color = OnCardText.copy(alpha = 0.78f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                            Text(stringResource(R.string.tap_to_reset_progress), color = OnCardText.copy(alpha = 0.78f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
@@ -8513,6 +9623,8 @@ fun AddMainQuestDialog(
     // NEW: Prerequisite Dropdown State
     var prerequisiteId by remember { mutableStateOf(editingQuest?.prerequisiteId) }
     var showPrereqDropdown by remember { mutableStateOf(false) }
+    val newQuestDefaultTitle = stringResource(R.string.new_quest_default)
+    val completeQuestDefaultStep = stringResource(R.string.complete_quest_default)
 
     // We filter out the current quest so you can't lock a quest behind itself!
     val validPrereqs = existingQuests.filter { it.id != editingQuest?.id }
@@ -8520,17 +9632,17 @@ fun AddMainQuestDialog(
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CardDarkBlue,
-        title = { Text(if (editingQuest == null) "New Main Quest" else "Edit Quest", color = accentStrong, fontWeight = FontWeight.Bold) },
+        title = { Text(if (editingQuest == null) stringResource(R.string.new_main_quest) else stringResource(R.string.edit_main_quest), color = accentStrong, fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Quest Title", color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text("Description", color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = xpReward, onValueChange = { xpReward = it.filter { char -> char.isDigit() } }, label = { Text("XP Reward", color = OnCardText.copy(alpha=0.5f)) }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong), modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(value = icon, onValueChange = { icon = it.take(4) }, label = { Text("Icon", color = OnCardText.copy(alpha=0.5f)) }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text(stringResource(R.string.l10n_quest_title), color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = description, onValueChange = { description = it }, label = { Text(stringResource(R.string.shop_description_label), color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = xpReward, onValueChange = { xpReward = it.filter { char -> char.isDigit() } }, label = { Text(stringResource(R.string.l10n_xp_reward), color = OnCardText.copy(alpha=0.5f)) }, keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(value = icon, onValueChange = { icon = it.take(4) }, label = { Text(stringResource(R.string.shop_icon_label), color = OnCardText.copy(alpha=0.5f)) }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong), modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Button(onClick = { imagePicker.launch(arrayOf("image/*")) }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(if (imageUri.isBlank()) "Pick image" else "Change image", color = readableTextColor(accentStrong)) }
+                    Button(onClick = { imagePicker.launch(arrayOf("image/*")) }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(if (imageUri.isBlank()) stringResource(R.string.pick_image) else stringResource(R.string.change_image), color = readableTextColor(accentStrong)) }
                     if (imageUri.isNotBlank()) {
-                        TextButton(onClick = { imageUri = "" }) { Text("Clear", color = OnCardText) }
+                        TextButton(onClick = { imageUri = "" }) { Text(stringResource(R.string.clear), color = OnCardText) }
                     }
                 }
                 if (imageUri.isNotBlank()) {
@@ -8540,9 +9652,9 @@ fun AddMainQuestDialog(
                 // NEW: The Prerequisite Dropdown UI
                 if (validPrereqs.isNotEmpty()) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Prerequisite (Locked until complete):", color = OnCardText.copy(alpha=0.8f), fontSize = 12.sp)
+                        Text(stringResource(R.string.prerequisite_label), color = OnCardText.copy(alpha=0.8f), fontSize = 12.sp)
                         Box {
-                            val selectedName = validPrereqs.find { it.id == prerequisiteId }?.title ?: "None"
+                            val selectedName = validPrereqs.find { it.id == prerequisiteId }?.title ?: stringResource(R.string.l10n_none)
                             val fieldShape = RoundedCornerShape(12.dp)
                             Row(
                                 modifier = Modifier
@@ -8562,7 +9674,7 @@ fun AddMainQuestDialog(
                                 Icon(Icons.Default.KeyboardArrowDown, null, tint = accentStrong.copy(alpha = 0.92f))
                             }
                             DropdownMenu(expanded = showPrereqDropdown, onDismissRequest = { showPrereqDropdown = false }, modifier = Modifier.background(CardDarkBlue)) {
-                                DropdownMenuItem(text = { Text("None", color = OnCardText) }, onClick = { prerequisiteId = null; showPrereqDropdown = false })
+                                DropdownMenuItem(text = { Text(stringResource(R.string.l10n_none), color = OnCardText) }, onClick = { prerequisiteId = null; showPrereqDropdown = false })
                                 validPrereqs.forEach { pq ->
                                     DropdownMenuItem(
                                         text = { Text(pq.title, color = OnCardText) },
@@ -8574,14 +9686,14 @@ fun AddMainQuestDialog(
                     }
                 }
 
-                Text("Quest Steps:", color = OnCardText, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.quest_steps_label), color = OnCardText, fontWeight = FontWeight.Bold)
                 steps.forEachIndexed { index, step ->
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         OutlinedTextField(value = step, onValueChange = { newStep -> val mut = steps.toMutableList(); mut[index] = newStep; steps = mut }, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
                         IconButton(onClick = { val mut = steps.toMutableList(); mut.removeAt(index); steps = mut }) { Icon(Icons.Default.Delete, null, tint = Color.Red.copy(alpha=0.6f)) }
                     }
                 }
-                TextButton(onClick = { steps = steps + "" }) { Text("+ Add Step", color = accentStrong) }
+                TextButton(onClick = { steps = steps + "" }) { Text(stringResource(R.string.add_step_btn), color = accentStrong) }
             }
         },
         confirmButton = {
@@ -8589,10 +9701,10 @@ fun AddMainQuestDialog(
                 val finalSteps = steps.filter { it.isNotBlank() }
                 val newQuest = CustomMainQuest(
                     id = editingQuest?.id ?: java.util.UUID.randomUUID().toString(),
-                    title = title.ifBlank { "New Quest" },
+                    title = title.ifBlank { newQuestDefaultTitle },
                     description = description,
                     xpReward = xpReward.toIntOrNull() ?: 500,
-                    steps = if (finalSteps.isEmpty()) listOf("Complete Quest") else finalSteps,
+                    steps = if (finalSteps.isEmpty()) listOf(completeQuestDefaultStep) else finalSteps,
                     currentStep = editingQuest?.currentStep ?: 0,
                     isClaimed = editingQuest?.isClaimed ?: false,
                     hasStarted = editingQuest?.hasStarted ?: false,
@@ -8601,9 +9713,9 @@ fun AddMainQuestDialog(
                     imageUri = imageUri.ifBlank { null }
                 )
                 onSave(newQuest)
-            }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text("Save", color = Color.Black, fontWeight = FontWeight.Bold) }
+            }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.save), color = Color.Black, fontWeight = FontWeight.Bold) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel", color = OnCardText) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), color = OnCardText) } }
     )
 }
 @Composable
@@ -8635,9 +9747,9 @@ fun NpcQuestDialog(
                 val isIntro = !quest.hasStarted
 
                 val dialogue = if (isIntro) {
-                    "Greetings, hero. A new path reveals itself.\n\n${quest.description}\n\nThe reward is ${quest.xpReward} XP.\nDo you accept this challenge?"
+                    stringResource(R.string.npc_dialog_intro, quest.description, quest.xpReward)
                 } else {
-                    "You have returned triumphant! The deed is done, and your legend grows.\n\nTake this reward, hero. You earned it."
+                    stringResource(R.string.npc_dialog_triumphant)
                 }
 
                 Text(
@@ -8665,11 +9777,11 @@ fun NpcQuestDialog(
                     colors = ButtonDefaults.buttonColors(containerColor = accentStrong),
                     modifier = Modifier.fillMaxWidth().height(50.dp)
                 ) {
-                    Text(if (isIntro) "I ACCEPT" else "CLAIM REWARD", color = Color.Black, fontWeight = FontWeight.Bold)
+                    Text(if (isIntro) stringResource(R.string.npc_accept_btn) else stringResource(R.string.npc_claim_reward_btn), color = Color.Black, fontWeight = FontWeight.Bold)
                 }
 
                 Spacer(Modifier.height(16.dp))
-                TextButton(onClick = onDismiss) { Text("Close", color = OnCardText.copy(alpha = 0.6f)) }
+                TextButton(onClick = onDismiss) { Text(stringResource(R.string.close), color = OnCardText.copy(alpha = 0.6f)) }
             }
         }
     }
@@ -8752,7 +9864,7 @@ fun MainQuestPackageHeader(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(10.dp))
-                            .background(CardDarkBlue.copy(alpha = 0.52f))
+                            .background(CardDarkBlue.scaleAlpha(0.52f))
                             .border(1.dp, OnCardText.copy(alpha = 0.12f), RoundedCornerShape(10.dp))
                             .clickable { familyExpanded = !familyExpanded }
                             .padding(horizontal = 10.dp, vertical = 9.dp),
@@ -8786,6 +9898,7 @@ fun MainQuestPackageHeader(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MainQuestChainHeader(
     familyTitle: String,
@@ -8794,11 +9907,31 @@ fun MainQuestChainHeader(
     customMode: Boolean,
     onEdit: (CustomMainQuest) -> Unit,
     onDelete: (CustomMainQuest) -> Unit,
-    onToggle: (CustomMainQuest, Boolean) -> Unit
+    onToggle: (CustomMainQuest, Boolean) -> Unit,
+    onDeleteChain: (String) -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var showDeleteChainDialog by remember { mutableStateOf(false) }
     val rotation by animateFloatAsState(if (expanded) 180f else 0f)
     val chainNeonBrush = rememberNeonBorderBrush(accentSoft, neonPaletteColor(ThemeRuntime.neonGlowPalette, ThemeRuntime.neonLightBoostEnabled))
+    if (showDeleteChainDialog) {
+        AlertDialog(
+            onDismissRequest = { showDeleteChainDialog = false },
+            title = { Text(stringResource(R.string.delete_chain_quests_title, familyTitle), color = OnCardText) },
+            text = { Text(stringResource(R.string.delete_chain_quests_body, quests.size), color = OnCardText.copy(alpha = 0.8f)) },
+            confirmButton = {
+                TextButton(onClick = { showDeleteChainDialog = false; onDeleteChain(familyTitle) }) {
+                    Text(stringResource(R.string.l10n_delete_all), color = Color(0xFFE57373))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteChainDialog = false }) {
+                    Text(stringResource(R.string.cancel), color = OnCardText.copy(alpha = 0.6f))
+                }
+            },
+            containerColor = CardDarkBlue
+        )
+    }
     Column {
         Row(
             modifier = Modifier
@@ -8806,7 +9939,10 @@ fun MainQuestChainHeader(
                 .clip(RoundedCornerShape(12.dp))
                 .background(CardDarkBlue)
                 .border(1.5.dp, chainNeonBrush, RoundedCornerShape(12.dp))
-                .clickable { expanded = !expanded }
+                .combinedClickable(
+                    onClick = { expanded = !expanded },
+                    onLongClick = { if (customMode) showDeleteChainDialog = true }
+                )
                 .padding(vertical = 10.dp, horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {

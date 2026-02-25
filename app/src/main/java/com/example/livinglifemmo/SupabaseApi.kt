@@ -246,6 +246,44 @@ object SupabaseApi {
         }.getOrNull()
     }
 
+    suspend fun signInWithGoogleIdToken(idToken: String): AuthSessionResponse? = withContext(Dispatchers.IO) {
+        if (!isConfigured || idToken.isBlank()) return@withContext null
+        val body = gson.toJson(mapOf("id_token" to idToken, "provider" to "google"))
+        val (code, raw) = request(
+            method = "POST",
+            path = "/auth/v1/token",
+            query = mapOf("grant_type" to "id_token"),
+            body = body
+        )
+        if (code !in 200..299 || raw.isBlank()) return@withContext null
+        runCatching {
+            gson.fromJson(raw, AuthSessionResponse::class.java)
+        }.getOrNull()
+    }
+
+    suspend fun getUser(accessToken: String): AuthUser? = withContext(Dispatchers.IO) {
+        if (!isConfigured || accessToken.isBlank()) return@withContext null
+        val (code, raw) = request(
+            method = "GET",
+            path = "/auth/v1/user",
+            bearerToken = accessToken
+        )
+        if (code !in 200..299 || raw.isBlank()) return@withContext null
+        runCatching {
+            gson.fromJson(raw, AuthUser::class.java)
+        }.getOrNull()
+    }
+
+    suspend fun signOut(accessToken: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isConfigured || accessToken.isBlank()) return@withContext false
+        val (code, _) = request(
+            method = "POST",
+            path = "/auth/v1/logout",
+            bearerToken = accessToken
+        )
+        code in 200..299
+    }
+
     suspend fun upsertCloudBackup(userEmail: String, payload: String, accessToken: String): Boolean = withContext(Dispatchers.IO) {
         if (!isConfigured || userEmail.isBlank() || payload.isBlank() || accessToken.isBlank()) return@withContext false
         val body = gson.toJson(
@@ -687,8 +725,15 @@ object SupabaseApi {
         val ratingAverageLiteral: String
     )
 
-    private data class AuthSessionResponse(
-        @SerializedName("access_token") val accessToken: String?
+    data class AuthSessionResponse(
+        @SerializedName("access_token") val accessToken: String?,
+        @SerializedName("refresh_token") val refreshToken: String?,
+        val user: AuthUser? = null
+    )
+
+    data class AuthUser(
+        val id: String?,
+        val email: String?
     )
 
     private data class CloudBackupRow(val payload: String)

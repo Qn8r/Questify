@@ -856,16 +856,95 @@ private fun getRealWorldMomentumMainQuests(packageId: String, lang: String = "en
     val isAr = lang == "ar"
     return if (isAr) {
         listOf(
-            CustomMainQuest("rw_arc_1", "الفصل 1: قاعدة المشي + الترطيب", "ثبت عاداتك الأساسية أولاً.", 450, listOf("مشى 1 كم في 3 أيام منفصلة", "شرب 3 أكواب ماء قبل الظهر في 4 أيام", "تسجيل الإكمال بصدق"), packageId = packageId),
-            CustomMainQuest("rw_arc_2", "الفصل 2: نظام المنزل", "ابنِ إيقاع منزلي نظيف وقليل الاحتكاك.", 600, listOf("إعادة ضبط الغرفة لمدة 10 دقائق لـ 5 أيام", "إيقاع الغسيل + الأطباق", "تحضير الغد كل مساء"), prerequisiteId = "rw_arc_1", packageId = packageId),
-            CustomMainQuest("rw_arc_3", "الفصل 3: إعادة الاتصال بالدائرة", "عزز شبكة الدعم الاجتماعي الخاصة بك.", 760, listOf("الاطمئنان على 3 أصدقاء/عائلة", "اتصال هادف واحد", "رسالة امتنان واحدة"), prerequisiteId = "rw_arc_2", packageId = packageId),
-            CustomMainQuest("rw_arc_4", "الفصل 4: زيارة دعم", "كن متواجداً لشخص في فترة صعبة.", 920, listOf("زيارة صديق/عائلة في مستشفى أو سجن عند الاقتضاء", "إذا لم يكن ممكناً، إجراء اتصال دعم طويل", "المتابعة مرة أخرى خلال الأسبوع"), prerequisiteId = "rw_arc_3", packageId = packageId),
-            CustomMainQuest("rw_arc_5", "الفصل 5: مهمة نزهة نهاية الأسبوع", "ادفع قدرتك على التحمل بمجهود خارجي هادف.", 1080, listOf("تخطيط المسار + تحضير السلامة", "إكمال نزهة واحدة أو مشي طويل في ممر", "روتين استشفاء ما بعد النزهة"), prerequisiteId = "rw_arc_4", packageId = packageId),
-            CustomMainQuest("rw_arc_6", "الفصل 6: انضباط التغذية", "ارتقِ بجودة الوجبات واتساقها.", 1240, listOf("وجبات غنية بالبروتين لـ 5 أيام", "لا مشروبات سكرية لـ 6 أيام", "تحقيق هدف الترطيب لـ 6 أيام"), prerequisiteId = "rw_arc_5", packageId = packageId),
-            CustomMainQuest("rw_arc_7", "الفصل 7: المثبت المالي", "قلل من ضغوط المال بأنظمة نظيفة.", 1380, listOf("تتبع كل إنفاق لمدة 7 أيام", "دفع/جدولة الرسوم الرئيسية", "تحديد سقف الشهر القادم + مخزن طوارئ"), prerequisiteId = "rw_arc_6", packageId = packageId),
-            CustomMainQuest("rw_arc_8", "الفصل 8: خدمة المجتمع", "ساهم بما هو أبعد من قائمة مهامك الخاصة.", 1520, listOf("عمل تطوعي/مساعدة واحد", "دعم مهمة لجار/صديق", "توثيق الأثر"), prerequisiteId = "rw_arc_7", packageId = packageId),
-            CustomMainQuest("rw_arc_9", "الفصل 9: سباق نمو المهارات", "أنجز ترقية واحدة عملية للحياة/الوظيفة.", 1680, listOf("اختر مهارة نمو واحدة", "5 جلسات مركزة", "مشاركة أو نشر النتيجة"), prerequisiteId = "rw_arc_8", packageId = packageId),
-            CustomMainQuest("rw_arc_10", "الفصل 10: الصعود في الحياة الحقيقية", "عزز المكاسب وثبت عادات المستوى التالي.", 1900, listOf("مراجعة قوس التقدم الكامل", "ترقية 3 عادات إلى غير قابلة للتفاوض", "كتابة مهمتك للـ 30 يوماً القادمة"), prerequisiteId = "rw_arc_9", packageId = packageId)
+            CustomMainQuest(
+                id = "rw_arc_1",
+                title = "الفصل 1: قاعدة المشي + الترطيب",
+                description = "ثبت عاداتك الأساسية أولاً.",
+                xpReward = 450,
+                steps = listOf("مشى 1 كم في 3 أيام منفصلة", "شرب 3 أكواب ماء قبل الظهر في 4 أيام", "تسجيل الإكمال بصدق"),
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_2",
+                title = "الفصل 2: نظام المنزل",
+                description = "ابنِ إيقاع منزلي نظيف وقليل الاحتكاك.",
+                xpReward = 600,
+                steps = listOf("إعادة ضبط الغرفة لمدة 10 دقائق لـ 5 أيام", "إيقاع الغسيل + الأطباق", "تحضير الغد كل مساء"),
+                prerequisiteId = "rw_arc_1",
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_3",
+                title = "الفصل 3: إعادة الاتصال بالدائرة",
+                description = "عزز شبكة الدعم الاجتماعي الخاصة بك.",
+                xpReward = 760,
+                steps = listOf("الاطمئنان على 3 أصدقاء/عائلة", "اتصال هادف واحد", "رسالة امتنان واحدة"),
+                prerequisiteId = "rw_arc_2",
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_4",
+                title = "الفصل 4: زيارة دعم",
+                description = "كن متواجداً لشخص في فترة صعبة.",
+                xpReward = 920,
+                steps = listOf("زيارة صديق/عائلة في مستشفى أو سجن عند الاقتضاء", "إذا لم يكن ممكناً، إجراء اتصال دعم طويل", "المتابعة مرة أخرى خلال الأسبوع"),
+                prerequisiteId = "rw_arc_3",
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_5",
+                title = "الفصل 5: مهمة نزهة نهاية الأسبوع",
+                description = "ادفع قدرتك على التحمل بمجهود خارجي هادف.",
+                xpReward = 1080,
+                steps = listOf("تخطيط المسار + تحضير السلامة", "إكمال نزهة واحدة أو مشي طويل في ممر", "روتين استشفاء ما بعد النزهة"),
+                prerequisiteId = "rw_arc_4",
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_6",
+                title = "الفصل 6: انضباط التغذية",
+                description = "ارتقِ بجودة الوجبات واتساقها.",
+                xpReward = 1240,
+                steps = listOf("وجبات غنية بالبروتين لـ 5 أيام", "لا مشروبات سكرية لـ 6 أيام", "تحقيق هدف الترطيب لـ 6 أيام"),
+                prerequisiteId = "rw_arc_5",
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_7",
+                title = "الفصل 7: المثبت المالي",
+                description = "قلل من ضغوط المال بأنظمة نظيفة.",
+                xpReward = 1380,
+                steps = listOf("تتبع كل إنفاق لمدة 7 أيام", "دفع/جدولة الرسوم الرئيسية", "تحديد سقف الشهر القادم + مخزن طوارئ"),
+                prerequisiteId = "rw_arc_6",
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_8",
+                title = "الفصل 8: خدمة المجتمع",
+                description = "ساهم بما هو أبعد من قائمة مهامك الخاصة.",
+                xpReward = 1520,
+                steps = listOf("عمل تطوعي/مساعدة واحد", "دعم مهمة لجار/صديق", "توثيق الأثر"),
+                prerequisiteId = "rw_arc_7",
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_9",
+                title = "الفصل 9: سباق نمو المهارات",
+                description = "أنجز ترقية واحدة عملية للحياة/الوظيفة.",
+                xpReward = 1680,
+                steps = listOf("اختر مهارة نمو واحدة", "5 جلسات مركزة", "مشاركة أو نشر النتيجة"),
+                prerequisiteId = "rw_arc_8",
+                packageId = packageId
+            ),
+            CustomMainQuest(
+                id = "rw_arc_10",
+                title = "الفصل 10: الصعود في الحياة الحقيقية",
+                description = "عزز المكاسب وثبت عادات المستوى التالي.",
+                xpReward = 1900,
+                steps = listOf("مراجعة قوس التقدم الكامل", "ترقية 3 عادات إلى غير قابلة للتفاوض", "كتابة مهمتك للـ 30 يوماً القادمة"),
+                prerequisiteId = "rw_arc_9",
+                packageId = packageId
+            )
         )
     } else {
         listOf(

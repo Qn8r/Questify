@@ -12,6 +12,7 @@ val localProps = Properties().apply {
 }
 val supabaseUrl = localProps.getProperty("SUPABASE_URL", "")
 val supabaseAnonKey = localProps.getProperty("SUPABASE_ANON_KEY", "")
+val googleWebClientId = localProps.getProperty("GOOGLE_WEB_CLIENT_ID", "")
 
 android {
     namespace = "com.example.livinglifemmo"
@@ -27,6 +28,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "SUPABASE_URL", "\"$supabaseUrl\"")
         buildConfigField("String", "SUPABASE_ANON_KEY", "\"$supabaseAnonKey\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
     }
 
     buildTypes {

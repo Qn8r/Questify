@@ -240,7 +240,16 @@ fun AppRoot(appContext: Context) {
     var fontScalePercent by remember { mutableIntStateOf(100) }
     var appLanguage by remember { mutableStateOf("system") }
     var backgroundImageUri by remember { mutableStateOf<String?>(null) }
+    var backgroundImageTintEnabled by remember { mutableStateOf(true) }
     var backgroundImageTransparencyPercent by remember { mutableIntStateOf(78) }
+    var accentTransparencyPercent by remember { mutableIntStateOf(0) }
+    var textTransparencyPercent by remember { mutableIntStateOf(0) }
+    var appBgTransparencyPercent by remember { mutableIntStateOf(0) }
+    var chromeBgTransparencyPercent by remember { mutableIntStateOf(0) }
+    var cardBgTransparencyPercent by remember { mutableIntStateOf(0) }
+    var journalPageTransparencyPercent by remember { mutableIntStateOf(0) }
+    var journalAccentTransparencyPercent by remember { mutableIntStateOf(0) }
+    var buttonTransparencyPercent by remember { mutableIntStateOf(0) }
     var textColorOverride by remember { mutableStateOf<Color?>(null) }
     var appTheme by remember { mutableStateOf(if (systemPrefersDark) AppTheme.DEFAULT else AppTheme.LIGHT) }
     var accent by remember { mutableStateOf(AccentBurntOrange) }
@@ -251,6 +260,12 @@ fun AppRoot(appContext: Context) {
     var journalPageColorOverride by remember { mutableStateOf<Color?>(null) }
     var journalAccentColorOverride by remember { mutableStateOf<Color?>(null) }
     var journalName by remember { mutableStateOf("Journal") }
+    var isLoggedIn by remember { mutableStateOf(false) }
+    var authAccessToken by remember { mutableStateOf("") }
+    var authRefreshToken by remember { mutableStateOf("") }
+    var authUserEmail by remember { mutableStateOf("") }
+    var authUserId by remember { mutableStateOf("") }
+    var showLoginRequiredDialog by remember { mutableStateOf(false) }
     val runtimeTheme = remember(appTheme, appBackgroundColorOverride) {
         appBackgroundColorOverride?.let {
             if (it.luminance() >= 0.56f) {
@@ -264,6 +279,8 @@ fun AppRoot(appContext: Context) {
     }
     val baseThemeBg = ThemeEngine.getColors(runtimeTheme).second
     val themeBg = appBackgroundColorOverride ?: baseThemeBg
+    val appBgAlpha = (1f - (appBgTransparencyPercent.coerceIn(0, 100) / 100f)).coerceIn(0f, 1f)
+    val chromeBgAlpha = (1f - (chromeBgTransparencyPercent.coerceIn(0, 100) / 100f)).coerceIn(0f, 1f)
     val isThemeBgLight = remember(themeBg) { themeBg.luminance() >= 0.56f }
     val accentStrong = buttonColorOverride ?: accent
     val accentSoft = remember(accentStrong, themeBg) { mixForBackground(accentStrong, themeBg) }
@@ -274,16 +291,16 @@ fun AppRoot(appContext: Context) {
             mixForBackground(Color(0xFF060A11), themeBg).copy(alpha = 0.97f)
         }
     }
-    val drawerBg = remember(defaultChromeBg, chromeBackgroundColorOverride) {
-        chromeBackgroundColorOverride ?: defaultChromeBg
+    val drawerBg = remember(defaultChromeBg, chromeBackgroundColorOverride, chromeBgAlpha) {
+        (chromeBackgroundColorOverride ?: defaultChromeBg).copy(alpha = chromeBgAlpha)
     }
-    val navBarBg = remember(drawerBg, chromeBackgroundColorOverride, isThemeBgLight, backgroundImageUri, backgroundImageTransparencyPercent) {
+    val navBarBg = remember(drawerBg, chromeBackgroundColorOverride, isThemeBgLight, backgroundImageUri, backgroundImageTransparencyPercent, chromeBgAlpha) {
         val imageBlend = if (backgroundImageUri.isNullOrBlank()) 0f else (backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f)
         val targetAlpha = (0.96f - (imageBlend * 0.18f)).coerceIn(0.74f, 0.96f)
         chromeBackgroundColorOverride ?: if (isThemeBgLight) {
-            mixForBackground(Color(0xFFBDCCE3), drawerBg).copy(alpha = targetAlpha)
+            mixForBackground(Color(0xFFBDCCE3), drawerBg).copy(alpha = targetAlpha * chromeBgAlpha)
         } else {
-            mixForBackground(Color(0xFF03060B), drawerBg).copy(alpha = targetAlpha)
+            mixForBackground(Color(0xFF03060B), drawerBg).copy(alpha = targetAlpha * chromeBgAlpha)
         }
     }
     val drawerContentColor = remember(drawerBg) {
@@ -299,6 +316,7 @@ fun AppRoot(appContext: Context) {
     var customTemplates by remember { mutableStateOf<List<CustomTemplate>>(emptyList()) }
     var pendingUncheckQuestId by remember { mutableStateOf<Int?>(null) }
     var showFocusTimer by remember { mutableStateOf(false) }
+    var timerPersistJob by remember { mutableStateOf<Job?>(null) }
     var resetBackupBefore by remember { mutableStateOf(false) }
     var resetBackupName by remember { mutableStateOf("Pre-reset backup") }
     var unlockedAchievementIds by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -310,6 +328,7 @@ fun AppRoot(appContext: Context) {
     var dailyQuestTarget by remember { mutableIntStateOf(5) }
     var settingsExpandedSection by rememberSaveable { mutableStateOf("gameplay") }
     var questsPreferredTab by rememberSaveable { mutableIntStateOf(0) }
+    var pendingHomeEditDailyTemplateId by rememberSaveable { mutableStateOf<String?>(null) }
     var cloudSyncEnabled by remember { mutableStateOf(true) }
     var cloudAccountEmail by remember { mutableStateOf("") }
     var cloudConnectedAccount by remember { mutableStateOf<GoogleSignInAccount?>(null) }
@@ -392,7 +411,16 @@ fun AppRoot(appContext: Context) {
             fontStyle = fontStyle,
             fontScalePercent = fontScalePercent,
             backgroundImageUri = backgroundImageUri,
+            backgroundImageTintEnabled = backgroundImageTintEnabled,
             backgroundImageTransparencyPercent = backgroundImageTransparencyPercent.coerceIn(0, 100),
+            accentTransparencyPercent = accentTransparencyPercent.coerceIn(0, 100),
+            textTransparencyPercent = textTransparencyPercent.coerceIn(0, 100),
+            appBgTransparencyPercent = appBgTransparencyPercent.coerceIn(0, 100),
+            chromeBgTransparencyPercent = chromeBgTransparencyPercent.coerceIn(0, 100),
+            cardBgTransparencyPercent = cardBgTransparencyPercent.coerceIn(0, 100),
+            journalPageTransparencyPercent = journalPageTransparencyPercent.coerceIn(0, 100),
+            journalAccentTransparencyPercent = journalAccentTransparencyPercent.coerceIn(0, 100),
+            buttonTransparencyPercent = buttonTransparencyPercent.coerceIn(0, 100),
             textColorArgb = textColorOverride?.toArgbCompat()?.toLong(),
             appBackgroundArgb = appBackgroundColorOverride?.toArgbCompat()?.toLong(),
             chromeBackgroundArgb = chromeBackgroundColorOverride?.toArgbCompat()?.toLong(),
@@ -437,7 +465,16 @@ fun AppRoot(appContext: Context) {
         fontStyle = runCatching { settings.fontStyle }.getOrDefault(AppFontStyle.DEFAULT)
         fontScalePercent = settings.fontScalePercent.coerceIn(80, 125)
         backgroundImageUri = runCatching { settings.backgroundImageUri }.getOrNull()
+        backgroundImageTintEnabled = runCatching { settings.backgroundImageTintEnabled }.getOrDefault(true)
         backgroundImageTransparencyPercent = (settings.backgroundImageTransparencyPercent ?: backgroundImageTransparencyPercent).coerceIn(0, 100)
+        accentTransparencyPercent = (settings.accentTransparencyPercent ?: accentTransparencyPercent).coerceIn(0, 100)
+        textTransparencyPercent = (settings.textTransparencyPercent ?: textTransparencyPercent).coerceIn(0, 100)
+        appBgTransparencyPercent = (settings.appBgTransparencyPercent ?: appBgTransparencyPercent).coerceIn(0, 100)
+        chromeBgTransparencyPercent = (settings.chromeBgTransparencyPercent ?: chromeBgTransparencyPercent).coerceIn(0, 100)
+        cardBgTransparencyPercent = (settings.cardBgTransparencyPercent ?: cardBgTransparencyPercent).coerceIn(0, 100)
+        journalPageTransparencyPercent = (settings.journalPageTransparencyPercent ?: journalPageTransparencyPercent).coerceIn(0, 100)
+        journalAccentTransparencyPercent = (settings.journalAccentTransparencyPercent ?: journalAccentTransparencyPercent).coerceIn(0, 100)
+        buttonTransparencyPercent = (settings.buttonTransparencyPercent ?: buttonTransparencyPercent).coerceIn(0, 100)
         textColorOverride = settings.textColorArgb?.let { Color(it.toInt()) }
         appBackgroundColorOverride = settings.appBackgroundArgb?.let { Color(it.toInt()) }
         chromeBackgroundColorOverride = settings.chromeBackgroundArgb?.let { Color(it.toInt()) }
@@ -704,6 +741,7 @@ fun AppRoot(appContext: Context) {
     }
 
     fun submitCommunityComment(postId: String, body: String) {
+        if (!isLoggedIn) { showLoginRequiredDialog = true; return }
         val clean = body.trim().take(500)
         if (clean.length < 2) return
         scope.launch {
@@ -717,6 +755,7 @@ fun AppRoot(appContext: Context) {
     }
 
     fun voteCommunityComment(postId: String, commentId: String, vote: Int) {
+        if (!isLoggedIn) { showLoginRequiredDialog = true; return }
         scope.launch {
             val ok = runCatching { SupabaseApi.voteComment(commentId, communityUserId, vote) }.getOrDefault(false)
             if (ok) {
@@ -885,7 +924,16 @@ fun AppRoot(appContext: Context) {
                 p[Keys.NEON_FLOW_SPEED] = neonFlowSpeed.coerceIn(0, 2)
                 p[Keys.NEON_GLOW_PALETTE] = neonGlowPalette
                 p[Keys.BACKGROUND_IMAGE_URI] = backgroundImageUri.orEmpty()
+                p[Keys.BACKGROUND_IMAGE_TINT_ENABLED] = backgroundImageTintEnabled
                 p[Keys.BACKGROUND_IMAGE_TRANSPARENCY_PERCENT] = backgroundImageTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_ACCENT] = accentTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_TEXT] = textTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_APP_BG] = appBgTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_CHROME_BG] = chromeBgTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_CARD_BG] = cardBgTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_JOURNAL_PAGE] = journalPageTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_JOURNAL_ACCENT] = journalAccentTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_BUTTON] = buttonTransparencyPercent.coerceIn(0, 100)
                 appBackgroundColorOverride?.let { p[Keys.APP_BACKGROUND_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.APP_BACKGROUND_ARGB)
                 chromeBackgroundColorOverride?.let { p[Keys.CHROME_BACKGROUND_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.CHROME_BACKGROUND_ARGB)
                 cardColorOverride?.let { p[Keys.CARD_COLOR_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.CARD_COLOR_ARGB)
@@ -893,6 +941,11 @@ fun AppRoot(appContext: Context) {
                 journalPageColorOverride?.let { p[Keys.JOURNAL_PAGE_COLOR_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.JOURNAL_PAGE_COLOR_ARGB)
                 journalAccentColorOverride?.let { p[Keys.JOURNAL_ACCENT_COLOR_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.JOURNAL_ACCENT_COLOR_ARGB)
                 p[Keys.JOURNAL_NAME] = journalName
+                p[Keys.AUTH_ACCESS_TOKEN] = authAccessToken
+                p[Keys.AUTH_REFRESH_TOKEN] = authRefreshToken
+                p[Keys.AUTH_USER_EMAIL] = authUserEmail
+                p[Keys.AUTH_USER_ID] = authUserId
+                p[Keys.AUTH_PROVIDER] = if (isLoggedIn) "google" else ""
                 p[Keys.ONBOARDING_GOAL] = onboardingGoal.name
                 p[Keys.ONBOARDING_DIFFICULTY] = difficultyPreference.name
                 p[Keys.PREMIUM_UNLOCKED] = premiumUnlocked
@@ -1115,7 +1168,16 @@ fun AppRoot(appContext: Context) {
                 p[Keys.FONT_STYLE] = fontStyle.name
                 p[Keys.FONT_SCALE_PERCENT] = fontScalePercent.coerceIn(80, 125)
                 p[Keys.BACKGROUND_IMAGE_URI] = backgroundImageUri.orEmpty()
+                p[Keys.BACKGROUND_IMAGE_TINT_ENABLED] = backgroundImageTintEnabled
                 p[Keys.BACKGROUND_IMAGE_TRANSPARENCY_PERCENT] = backgroundImageTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_ACCENT] = accentTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_TEXT] = textTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_APP_BG] = appBgTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_CHROME_BG] = chromeBgTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_CARD_BG] = cardBgTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_JOURNAL_PAGE] = journalPageTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_JOURNAL_ACCENT] = journalAccentTransparencyPercent.coerceIn(0, 100)
+                p[Keys.TRANSPARENCY_BUTTON] = buttonTransparencyPercent.coerceIn(0, 100)
                 appBackgroundColorOverride?.let { p[Keys.APP_BACKGROUND_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.APP_BACKGROUND_ARGB)
                 chromeBackgroundColorOverride?.let { p[Keys.CHROME_BACKGROUND_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.CHROME_BACKGROUND_ARGB)
                 cardColorOverride?.let { p[Keys.CARD_COLOR_ARGB] = it.toArgbCompat() } ?: p.remove(Keys.CARD_COLOR_ARGB)
@@ -1282,7 +1344,16 @@ fun AppRoot(appContext: Context) {
         fontStyle = runCatching { AppFontStyle.valueOf(prefs[Keys.FONT_STYLE] ?: AppFontStyle.DEFAULT.name) }.getOrDefault(AppFontStyle.DEFAULT)
         fontScalePercent = (prefs[Keys.FONT_SCALE_PERCENT] ?: 100).coerceIn(80, 125)
         backgroundImageUri = prefs[Keys.BACKGROUND_IMAGE_URI].orEmpty().ifBlank { null }
+        backgroundImageTintEnabled = prefs[Keys.BACKGROUND_IMAGE_TINT_ENABLED] ?: true
         backgroundImageTransparencyPercent = (prefs[Keys.BACKGROUND_IMAGE_TRANSPARENCY_PERCENT] ?: 78).coerceIn(0, 100)
+        accentTransparencyPercent = (prefs[Keys.TRANSPARENCY_ACCENT] ?: 0).coerceIn(0, 100)
+        textTransparencyPercent = (prefs[Keys.TRANSPARENCY_TEXT] ?: 0).coerceIn(0, 100)
+        appBgTransparencyPercent = (prefs[Keys.TRANSPARENCY_APP_BG] ?: 0).coerceIn(0, 100)
+        chromeBgTransparencyPercent = (prefs[Keys.TRANSPARENCY_CHROME_BG] ?: 0).coerceIn(0, 100)
+        cardBgTransparencyPercent = (prefs[Keys.TRANSPARENCY_CARD_BG] ?: 0).coerceIn(0, 100)
+        journalPageTransparencyPercent = (prefs[Keys.TRANSPARENCY_JOURNAL_PAGE] ?: 0).coerceIn(0, 100)
+        journalAccentTransparencyPercent = (prefs[Keys.TRANSPARENCY_JOURNAL_ACCENT] ?: 0).coerceIn(0, 100)
+        buttonTransparencyPercent = (prefs[Keys.TRANSPARENCY_BUTTON] ?: 0).coerceIn(0, 100)
         textColorOverride = prefs[Keys.TEXT_COLOR_ARGB]?.let { Color(it) }
         appBackgroundColorOverride = prefs[Keys.APP_BACKGROUND_ARGB]?.let { Color(it) }
         chromeBackgroundColorOverride = prefs[Keys.CHROME_BACKGROUND_ARGB]?.let { Color(it) }
@@ -1291,6 +1362,11 @@ fun AppRoot(appContext: Context) {
         journalPageColorOverride = prefs[Keys.JOURNAL_PAGE_COLOR_ARGB]?.let { Color(it) }
         journalAccentColorOverride = prefs[Keys.JOURNAL_ACCENT_COLOR_ARGB]?.let { Color(it) }
         journalName = prefs[Keys.JOURNAL_NAME].orEmpty().ifBlank { "Journal" }
+        authAccessToken = prefs[Keys.AUTH_ACCESS_TOKEN].orEmpty()
+        authRefreshToken = prefs[Keys.AUTH_REFRESH_TOKEN].orEmpty()
+        authUserEmail = prefs[Keys.AUTH_USER_EMAIL].orEmpty()
+        authUserId = prefs[Keys.AUTH_USER_ID].orEmpty()
+        isLoggedIn = prefs[Keys.AUTH_PROVIDER].orEmpty().isNotBlank() && authAccessToken.isNotBlank()
         healthDailySnapshot = runCatching { Gson().fromJson(prefs[Keys.HEALTH_DAILY_SNAPSHOT].orEmpty(), HealthDailySnapshot::class.java) }.getOrNull()
         val savedLang = prefs[Keys.APP_LANGUAGE].orEmpty().ifBlank { "system" }
         appLanguage = savedLang
@@ -1348,6 +1424,13 @@ fun AppRoot(appContext: Context) {
                 appContext.dataStore.edit { p -> p[activePacksKey] = activePackageIds.joinToString(",") }
             }
         }
+        if (!activePackageIds.contains(REAL_DAILY_LIFE_PACKAGE_ID)) {
+            val filteredStarterShop = shopItems.filterNot { it.id == "shop_apple" || it.id == "shop_coffee" }
+            if (filteredStarterShop.size != shopItems.size) {
+                shopItems = filteredStarterShop
+                appContext.dataStore.edit { p -> p[Keys.SHOP_ITEMS] = serializeShopItems(filteredStarterShop) }
+            }
+        }
 
         // NEW: Load Template Library
         savedTemplates = deserializeSavedTemplates(prefs[Keys.SAVED_TEMPLATES])
@@ -1361,6 +1444,14 @@ fun AppRoot(appContext: Context) {
         communityUserName = sanitizeDisplayName(
             prefs[Keys.COMMUNITY_USER_NAME].orEmpty().ifBlank { "Player-${communityUserId.take(4)}" }
         )
+        if (isLoggedIn && authUserId.isNotBlank()) {
+            communityUserId = secureCommunityUserId(authUserId)
+            if (communityUserName.isBlank() || communityUserName.equals("Player", ignoreCase = true)) {
+                communityUserName = sanitizeDisplayName(
+                    authUserEmail.substringBefore("@").replace(Regex("[^A-Za-z0-9 _-]"), "").ifBlank { "Player-${communityUserId.take(4)}" }
+                )
+            }
+        }
         val storedCommunity = deserializeCommunityPosts(prefs[Keys.COMMUNITY_POSTS]).filterNot { blockedAuthorIds.contains(it.authorId) || mutedAuthorIds.contains(it.authorId) }
         if (storedCommunity.isEmpty()) {
             val starter = getStarterCommunityPosts()
@@ -1431,7 +1522,7 @@ fun AppRoot(appContext: Context) {
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode != Activity.RESULT_OK) {
-            scope.launch { snackbarHostState.showSnackbar("Google sign-in canceled.") }
+            scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.google_sign_in_canceled)) }
             return@rememberLauncherForActivityResult
         }
         val data = result.data
@@ -1443,8 +1534,80 @@ fun AppRoot(appContext: Context) {
                 AppLog.w("Google sign-in failed.", e)
                 val code = GoogleDriveSync.resolveSignInStatusCode(e)
                 val hint = if (code != null) " (code: $code)" else ""
-                scope.launch { snackbarHostState.showSnackbar("Google sign-in failed$hint.") }
+                scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.google_sign_in_failed_hint, hint)) }
             }
+    }
+
+    val authGoogleSignInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != Activity.RESULT_OK) {
+            scope.launch { snackbarHostState.showSnackbar("Google sign-in canceled.") }
+            return@rememberLauncherForActivityResult
+        }
+        val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
+            val idToken = account?.idToken
+            if (idToken.isNullOrBlank()) {
+                scope.launch { snackbarHostState.showSnackbar("Failed to get Google ID token.") }
+                return@rememberLauncherForActivityResult
+            }
+            scope.launch {
+                val session = SupabaseApi.signInWithGoogleIdToken(idToken)
+                if (session != null && !session.accessToken.isNullOrBlank()) {
+                    authAccessToken = session.accessToken.orEmpty()
+                    authRefreshToken = session.refreshToken.orEmpty()
+                    authUserEmail = session.user?.email ?: account.email.orEmpty()
+                    authUserId = session.user?.id.orEmpty()
+                    if (authUserId.isNotBlank()) {
+                        val safeUid = secureCommunityUserId(authUserId)
+                        val suggestedName = communityUserName.takeIf { it.isNotBlank() && !it.equals("Player", ignoreCase = true) }
+                            ?: authUserEmail.substringBefore("@").replace(Regex("[^A-Za-z0-9 _-]"), "").take(24).ifBlank { "Player" }
+                        persistCommunityProfile(safeUid, suggestedName)
+                    }
+                    isLoggedIn = true
+                    persistSettings()
+                    snackbarHostState.showSnackbar(appContext.getString(R.string.account_signed_in_as_dot, authUserEmail))
+                } else {
+                    snackbarHostState.showSnackbar(appContext.getString(R.string.google_sign_in_failed_check_config))
+                }
+            }
+        } catch (e: Exception) {
+            AppLog.w("Auth Google sign-in failed.", e)
+            scope.launch { snackbarHostState.showSnackbar("Google sign-in failed.") }
+        }
+    }
+
+    fun performGoogleLogin() {
+        val webClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
+        if (webClientId.isBlank()) {
+            scope.launch { snackbarHostState.showSnackbar("Google Web Client ID not configured.") }
+            return
+        }
+        val gso = com.google.android.gms.auth.api.signin.GoogleSignInOptions.Builder(
+            com.google.android.gms.auth.api.signin.GoogleSignInOptions.DEFAULT_SIGN_IN
+        )
+            .requestIdToken(webClientId)
+            .requestEmail()
+            .build()
+        val client = com.google.android.gms.auth.api.signin.GoogleSignIn.getClient(appContext, gso)
+        authGoogleSignInLauncher.launch(client.signInIntent)
+    }
+
+    fun performLogout() {
+        scope.launch {
+            if (authAccessToken.isNotBlank()) {
+                SupabaseApi.signOut(authAccessToken)
+            }
+            authAccessToken = ""
+            authRefreshToken = ""
+            authUserEmail = ""
+            authUserId = ""
+            isLoggedIn = false
+            persistSettings()
+            snackbarHostState.showSnackbar("Signed out.")
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -1569,129 +1732,65 @@ fun AppRoot(appContext: Context) {
     val advancedMainImportLimit = 200
     val advancedShopImportLimit = 120
     val advancedTemplatePromptText = """
-You are editing a JSON file exported from the Questify app.
+You are editing a Questify template JSON file.
 
-USER REQUEST:
+USER REQUEST (highest priority):
+==========
 {{USER_REQUEST}}
+==========
 
-Goal:
-- Use the USER REQUEST to generate/replace quests in this file.
-- You may edit daily_quests, main_quests, shop_items, app_theme, and accent_argb.
-- Keep schema-compatible JSON for Questify import.
+TASK:
+- Generate/update daily_quests, main_quests, and optional shop_items to satisfy USER REQUEST.
+- {{THEME_POLICY_GOAL}}
+- Keep the file import-compatible for Questify.
 
-Hard rules:
-1) Return valid JSON only. No markdown. No explanation.
-2) Keep required top-level keys for import: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.
-   - shop_items is optional but supported and recommended when USER REQUEST includes economy/shop.
-3) ai_instructions and guide are optional in final output (you may remove them).
-4) daily_quests rules:
-    - category must be one of FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND
-    - difficulty must be 1..5
-    - xp must be 10..300
-    - target must be >= 1
-    - title must be short and clear for mobile UI
-    - objective_type allowed: COUNT, TIMER, HEALTH
-    - for TIMER quests: target_seconds must be 30..86400 and target should remain >= 1
-    - for HEALTH quests: set health_metric to one of steps, heart_rate, distance_m, calories_kcal
-    - avoid filler duplicates (for example repetitive numbered clones like "Quest #2/#3/#4")
-    - if USER REQUEST does not specify category distribution, auto-distribute across all 5 categories: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND
-    - in default auto-distribution, keep category counts near-balanced (max difference is 1)
-    - if USER REQUEST specifies category focus or per-category counts, follow USER REQUEST (while respecting app limits)
-    - if USER REQUEST does not specify tier distribution, distribute difficulty tiers 1..5 near-balanced (max difference is 1 whenever possible)
-    - avoid concentrating most dailies into a single tier unless USER REQUEST explicitly asks for it
-5) main_quests rules:
-    - ref must be unique (example: mq_1, mq_2, ...)
-   - title/description should match the USER REQUEST style
-    - xp_reward should scale reasonably (100..5000)
-    - steps should be 2..8 concise milestones
-    - prerequisite_ref must be null or match an existing ref
-    - optional icon is allowed (short emoji)
-    - optional image_uri is allowed
-    - for numbered chains in the same family (example: "Career Upgrade 1/2/3"), xp_reward must be non-decreasing by number
-    - prefer clear progression in numbered chains (recommended +8% to +20% or at least +50 XP per step)
-6) shop_items rules:
-   - name must be clear and short
-   - icon should be short emoji
-   - description concise and practical
-   - cost should fit app economy (recommended 20..5000)
-   - stock/max_stock should be 0..99 and max_stock >= stock
-   - avoid overpowered progression skips (focus utility/cosmetic/quality-of-life)
-   - avoid duplicate filler items
-7) App import limits:
-   - daily_quests max = $advancedDailyImportLimit total
-   - main_quests max = $advancedMainImportLimit total
-   - shop_items max = $advancedShopImportLimit total
-   - counts are TOTAL, not per category
-   - if USER REQUEST exceeds limits, clamp to these maximums
-8) Do not remove existing valid quests unless needed to satisfy the USER REQUEST.
-9) The existing quests in daily_quests/main_quests/shop_items are examples only.
-    - You may fully replace them to match the USER REQUEST.
-    - Prefer replacing example content with the requested content.
+RULES:
+1) Output valid JSON only (no markdown, no commentary).
+2) Keep required top-level keys: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.
+3) Categories allowed: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.
+4) daily_quests: difficulty 1..5, xp 10..300, target >= 1, objective_type COUNT|TIMER|HEALTH.
+   - TIMER: target_seconds 30..86400.
+   - HEALTH: health_metric in steps|heart_rate|distance_m|calories_kcal.
+5) If category/tier distribution is not requested, keep it near-balanced across all 5 categories and tiers 1..5.
+6) main_quests: unique ref, prerequisite_ref null or existing ref, 2..8 concise steps, xp_reward 100..5000.
+   - Numbered chains in same family should have non-decreasing xp_reward.
+7) shop_items (optional): concise name/description, emoji icon, balanced economy, stock/max_stock 0..99, max_stock >= stock.
+8) Hard caps (TOTAL counts): daily_quests <= $advancedDailyImportLimit, main_quests <= $advancedMainImportLimit, shop_items <= $advancedShopImportLimit.
+9) {{THEME_POLICY_RULE}}
+10) ai_instructions and guide are optional in final output.
 
-Final output:
-- Return the final JSON file content only.
-- Do NOT add any explanation before or after JSON.
-- Do NOT use markdown/code fences.
-- Chat response must be JSON only.
-- If your platform supports file attachments, return it as a downloadable file named questify_advanced_template.json.
+FINAL OUTPUT:
+- Return the full updated JSON file only.
+- If attachments are supported, use filename questify_advanced_template.json.
 """.trimIndent()
 
     fun buildAdvancedTemplateStarterJson(): String {
+        val starterSettings = currentTemplateSettings().copy(backgroundImageUri = null)
         val starter = AdvancedTemplateFile(
             template_name = "AI Generated Template",
             app_theme = appTheme.name,
             accent_argb = accent.toArgbCompat().toLong(),
             ai_instructions = listOf(
                 "This JSON file is from Questify.",
-                "Read USER REQUEST first, then update daily_quests/main_quests/shop_items and optionally app_theme/accent_argb.",
-                "Existing quests are sample data only; you can replace or remove them.",
-                "Required keys: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.",
-                "guide and ai_instructions are optional in the final returned file.",
-                "Use only category values: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.",
-                "Daily rules: difficulty 1..5, xp 10..300, target >= 1, objective_type in COUNT|TIMER|HEALTH. TIMER uses target_seconds (30..86400). HEALTH uses health_metric (steps|heart_rate|distance_m|calories_kcal).",
-                "If user does not specify category distribution, auto-distribute across FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.",
-                "Default auto-distribution should be near-balanced (difference <= 1).",
-                "If user specifies category focus/per-category counts, follow that request within app caps.",
-                "If user does not specify tier distribution, keep daily tiers 1..5 near-balanced.",
-                "Do not concentrate most dailies in one tier unless user explicitly requests it.",
-                "Counts are total counts, not per-category counts.",
-                "Respect app caps: daily_quests <= $advancedDailyImportLimit and main_quests <= $advancedMainImportLimit.",
-                "Avoid repetitive filler quests and low-quality numbered duplicates.",
-                "Main rules: unique ref values, prerequisite_ref null or existing ref.",
-                "Main quests can include optional icon and optional image_uri.",
-                "For numbered main quest families, keep xp_reward non-decreasing by family number.",
-                "Shop rules: concise name/description, icon emoji, cost fits economy, stock/max_stock in 0..99, avoid duplicate filler.",
-                "Shop caps: shop_items <= $advancedShopImportLimit.",
-                "Output must be JSON only, no markdown, no commentary, no extra chat text.",
-                "If possible, return as downloadable file attachment named questify_advanced_template.json."
+                "Read USER REQUEST first, then update daily_quests/main_quests/shop_items.",
+                "Keep required keys: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.",
+                "Follow prompt limits/rules; return JSON only."
             ),
             guide = AdvancedTemplateGuide(
                 summary = "Workflow: user asks AI for quests, AI edits this file directly, user uploads the returned JSON in Settings > Advanced Templates.",
-                ai_prompt_example = advancedTemplatePromptText.replace("{{USER_REQUEST}}", "Generate 120 daily quests, 40 main quests, and 24 shop items for a disciplined real-life RPG. Set app_theme to DEFAULT and pick a matching accent_argb. Keep main chains progressive and shop prices balanced for this quest economy."),
+                ai_prompt_example = "",
                 notes = listOf(
-                    "Do not remove schema_version, template_name, daily_quests, main_quests.",
-                    "AI may also update app_theme and accent_argb if requested.",
-                    "AI may generate shop_items when requested.",
-                    "Current quests are placeholders/examples and can be replaced.",
-                    "daily_quests: category must be FITNESS|STUDY|HYDRATION|DISCIPLINE|MIND.",
-                    "daily_quests: difficulty 1..5, xp 10..300, target >= 1. objective_type COUNT|TIMER|HEALTH.",
-                    "daily_quests: TIMER uses target_seconds 30..86400. HEALTH uses health_metric steps|heart_rate|distance_m|calories_kcal.",
-                    "If category distribution is not requested, auto-distribute across all 5 categories.",
-                    "Default distribution should be near-balanced (difference <= 1).",
-                    "If category focus/per-category counts are requested, follow that request.",
-                    "If tier distribution is not requested, keep daily tiers 1..5 near-balanced.",
-                    "Avoid concentrating most dailies in one tier unless user requests it.",
-                    "Counts are totals (not per-category), and must respect app caps.",
-                    "Caps: daily_quests <= $advancedDailyImportLimit, main_quests <= $advancedMainImportLimit.",
-                    "Avoid repetitive filler quests and title spam.",
-                    "main_quests: ref should be unique (e.g. mq_1).",
-                    "main_quests: prerequisite_ref must point to an existing ref.",
-                    "main_quests: optional icon and optional image_uri are supported.",
-                    "main_quests: for numbered families, xp_reward should not decrease as the number increases.",
-                    "shop_items: keep economy balanced, realistic costs, and avoid overpowered items.",
-                    "Keep text concise and realistic for mobile UI."
+                    "daily_quests[]: title, category, difficulty, xp, target, icon, objective_type.",
+                    "objective_type TIMER can include target_seconds (30..86400).",
+                    "objective_type HEALTH can include health_metric and health_aggregation.",
+                    "main_quests[]: ref, title, description, xp_reward, steps[], prerequisite_ref, optional icon/image_uri.",
+                    "shop_items[] is optional: id, name, icon, description, cost, stock, max_stock, consumable, optional image_uri.",
+                    "template_settings is optional. Transparency values must be 0..100.",
+                    "Counts are totals and capped by the app.",
+                    "guide and ai_instructions may be removed from final output."
                 )
             ),
+            template_settings = starterSettings,
             daily_quests = listOf(
                 AdvancedDailyQuestEntry(title = "Morning walk 20 min", category = QuestCategory.FITNESS.name, difficulty = 2, xp = 20, target = 1, icon = "🚶", objective_type = "HEALTH", health_metric = "steps", health_aggregation = "daily_total"),
                 AdvancedDailyQuestEntry(title = "Deep work session", category = QuestCategory.STUDY.name, difficulty = 3, xp = 35, target = 1, icon = "🧠", objective_type = "TIMER", target_seconds = 3600)
@@ -1708,7 +1807,7 @@ Final output:
         return advancedTemplateGson.toJson(starter)
     }
 
-    fun buildAdvancedTemplatePromptFromRequest(userRequest: String): String {
+    fun buildAdvancedTemplatePromptFromRequest(userRequest: String, allowThemeChanges: Boolean): String {
         val request = userRequest.trim().ifBlank { "Generate 100 daily quests and 30 main quests in Saitama-style progression." }
         val lower = request.lowercase(Locale.getDefault())
         val dailyCount = Regex("""(\d{1,4})\s*(daily|day|dailies)""").find(lower)?.groupValues?.getOrNull(1)?.toIntOrNull()
@@ -1718,24 +1817,34 @@ Final output:
         val finalMainCount = mainCount?.coerceAtMost(advancedMainImportLimit)
         val finalShopCount = shopCount?.coerceAtMost(advancedShopImportLimit)
         val countHint = buildString {
-            append("\n- Counts are TOTAL, not per category.")
-            append("\n- Hard cap: daily <= $advancedDailyImportLimit, main <= $advancedMainImportLimit, shop_items <= $advancedShopImportLimit.")
-            append("\n- If category distribution is not specified, auto-distribute across FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.")
-            append("\n- In default distribution, keep category counts near-balanced (difference <= 1).")
-            append("\n- If tier distribution is not specified, keep daily tiers 1..5 near-balanced (difference <= 1 when possible).")
-            append("\n- If category focus/per-category counts are specified, follow that request within caps.")
-            append("\n- For numbered main quest families, keep xp_reward non-decreasing by number.")
-            append("\n- For shop_items, keep economy balanced (cost and stock progression, no overpowered skips).")
-            if (finalDailyCount != null) append("\n- Generate exactly $finalDailyCount daily quests.")
-            if (finalMainCount != null) append("\n- Generate exactly $finalMainCount main quests.")
-            if (finalShopCount != null) append("\n- Generate exactly $finalShopCount shop items.")
+            append("- Hard caps: daily <= $advancedDailyImportLimit, main <= $advancedMainImportLimit, shop_items <= $advancedShopImportLimit.")
+            if (allowThemeChanges) {
+                append("\n- Theme generation is enabled for this run.")
+            } else {
+                append("\n- Theme generation is disabled for this run.")
+            }
+            if (finalDailyCount != null) append("\n- Daily quests target: $finalDailyCount.")
+            if (finalMainCount != null) append("\n- Main quests target: $finalMainCount.")
+            if (finalShopCount != null) append("\n- Shop items target: $finalShopCount.")
             if (dailyCount != null && finalDailyCount != dailyCount) append("\n- Daily request was capped from $dailyCount to $finalDailyCount.")
             if (mainCount != null && finalMainCount != mainCount) append("\n- Main request was capped from $mainCount to $finalMainCount.")
             if (shopCount != null && finalShopCount != shopCount) append("\n- Shop request was capped from $shopCount to $finalShopCount.")
-            if (isNotBlank()) append("\n- If needed, replace all existing sample quests to match these counts.")
         }
-        val enrichedRequest = if (countHint.isBlank()) request else request + "\n\nCOUNT TARGETS:" + countHint
-        return advancedTemplatePromptText.replace("{{USER_REQUEST}}", enrichedRequest)
+        val enrichedRequest = if (countHint.isBlank()) request else request + "\n\nCOUNT TARGETS:\n" + countHint
+        val themePolicyGoal = if (allowThemeChanges) {
+            "You may edit daily_quests, main_quests, shop_items, app_theme, accent_argb, and template_settings."
+        } else {
+            "You may edit daily_quests, main_quests, and shop_items only. Keep app_theme, accent_argb, and template_settings unchanged."
+        }
+        val themePolicyRule = if (allowThemeChanges) {
+            "Theme changes are allowed when they help satisfy USER REQUEST."
+        } else {
+            "Theme changes are NOT allowed for this run. Do not modify app_theme, accent_argb, or template_settings."
+        }
+        return advancedTemplatePromptText
+            .replace("{{USER_REQUEST}}", enrichedRequest)
+            .replace("{{THEME_POLICY_GOAL}}", themePolicyGoal)
+            .replace("{{THEME_POLICY_RULE}}", themePolicyRule)
     }
 
     fun importAdvancedTemplateJson(raw: String): AdvancedTemplateImportResult {
@@ -1878,6 +1987,20 @@ Final output:
         }
 
         val theme = runCatching { parseStoredTheme(parsed.app_theme) }.getOrDefault(appTheme)
+        val safeTemplateSettings = parsed.template_settings?.copy(
+            dailyResetHour = parsed.template_settings.dailyResetHour.coerceIn(0, 23),
+            fontScalePercent = parsed.template_settings.fontScalePercent.coerceIn(80, 125),
+            neonFlowSpeed = parsed.template_settings.neonFlowSpeed.coerceIn(0, 2),
+            backgroundImageTransparencyPercent = parsed.template_settings.backgroundImageTransparencyPercent?.coerceIn(0, 100),
+            accentTransparencyPercent = parsed.template_settings.accentTransparencyPercent?.coerceIn(0, 100),
+            textTransparencyPercent = parsed.template_settings.textTransparencyPercent?.coerceIn(0, 100),
+            appBgTransparencyPercent = parsed.template_settings.appBgTransparencyPercent?.coerceIn(0, 100),
+            chromeBgTransparencyPercent = parsed.template_settings.chromeBgTransparencyPercent?.coerceIn(0, 100),
+            cardBgTransparencyPercent = parsed.template_settings.cardBgTransparencyPercent?.coerceIn(0, 100),
+            journalPageTransparencyPercent = parsed.template_settings.journalPageTransparencyPercent?.coerceIn(0, 100),
+            journalAccentTransparencyPercent = parsed.template_settings.journalAccentTransparencyPercent?.coerceIn(0, 100),
+            buttonTransparencyPercent = parsed.template_settings.buttonTransparencyPercent?.coerceIn(0, 100)
+        )
         val importedTemplate = GameTemplate(
             templateName = templateName,
             appTheme = theme,
@@ -1885,6 +2008,7 @@ Final output:
             mainQuests = main,
             shopItems = shop,
             packageId = packageId,
+            templateSettings = safeTemplateSettings,
             accentArgb = parsed.accent_argb
         )
         persistSavedTemplates((savedTemplates + importedTemplate).distinctBy { "${it.packageId}|${it.templateName}" })
@@ -1957,6 +2081,7 @@ Final output:
     }
 
     fun publishCurrentTemplateToCommunity(title: String, description: String, tagsRaw: String) {
+        if (!isLoggedIn) { showLoginRequiredDialog = true; return }
         val now = System.currentTimeMillis()
         val cooldownMs = 1000L * 60L * 3L
         if (now - lastCommunityPublishAt < cooldownMs) {
@@ -2040,6 +2165,7 @@ Final output:
     }
 
     fun onToggleFollowAuthor(authorId: String) {
+        if (!isLoggedIn) { showLoginRequiredDialog = true; return }
         if (authorId == communityUserId) return
         val wasFollowing = followedAuthorIds.contains(authorId)
         val next = if (wasFollowing) followedAuthorIds - authorId else followedAuthorIds + authorId
@@ -2078,11 +2204,13 @@ Final output:
     }
 
     fun onReportAuthor(authorId: String) {
+        if (!isLoggedIn) { showLoginRequiredDialog = true; return }
         AppLog.w("Community report submitted for author=$authorId by user=$communityUserId")
         scope.launch { snackbarHostState.showSnackbar("Report submitted.") }
     }
 
     fun onRateCommunityPost(postId: String, starsRaw: Int) {
+        if (!isLoggedIn) { showLoginRequiredDialog = true; return }
         val stars = starsRaw.coerceIn(1, 5)
         val previous = myCommunityRatings[postId]
         val updatedPosts = communityPosts.map { post ->
@@ -2151,21 +2279,65 @@ Final output:
         if (earnedIds.contains(uniqueId)) return
         totalXp += xp; earnedIds = earnedIds + uniqueId; SoundManager.playSuccess(); persistCore()
         val (base, completedIds) = todayBaseAndCompleted(); persistToday(lastDayEpoch, base, completedIds, earnedIds, refreshCount); updateHistory(lastDayEpoch, base, completedIds)
-        scope.launch { snackbarHostState.showSnackbar("+$xp XP") }
+        scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.xp_bonus_snackbar, xp)) }
     }
 
     fun awardFocusXp(xp: Int) {
         totalXp += xp; SoundManager.playSuccess(); persistCore()
-        scope.launch { snackbarHostState.showSnackbar("Focus session: +$xp XP") }
+        scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.focus_session_xp_snackbar, xp)) }
     }
 
     fun onUpdateQuestProgress(id: Int, newProgress: Int) {
+        timerPersistJob?.cancel()
+        timerPersistJob = null
         val updated = quests.map { q ->
             if (q.id == id) q.copy(currentProgress = newProgress.coerceIn(0, q.target + 1)) else q
         }
         quests = updated
 
         // Save immediately so it survives Theme Changes
+        val (base, completedIds) = todayBaseAndCompleted()
+        persistToday(lastDayEpoch, base, completedIds, earnedIds, refreshCount)
+    }
+
+    fun onTimerTickProgress(id: Int, newProgress: Int) {
+        val before = quests.firstOrNull { it.id == id } ?: return
+        val clamped = newProgress.coerceIn(0, before.target + 1)
+        if (before.currentProgress == clamped) return
+
+        quests = quests.map { q ->
+            if (q.id == id) q.copy(currentProgress = clamped) else q
+        }
+
+        timerPersistJob?.cancel()
+        timerPersistJob = scope.launch {
+            delay(5000)
+            val (base, completedIds) = todayBaseAndCompleted()
+            persistToday(lastDayEpoch, base, completedIds, earnedIds, refreshCount)
+            timerPersistJob = null
+        }
+    }
+
+    fun onTimerComplete(id: Int, newProgress: Int) {
+        timerPersistJob?.cancel()
+        timerPersistJob = null
+
+        val before = quests.firstOrNull { it.id == id } ?: return
+        val clamped = newProgress.coerceIn(0, before.target + 1)
+        if (before.currentProgress != clamped) {
+            quests = quests.map { q ->
+                if (q.id == id) q.copy(currentProgress = clamped) else q
+            }
+        }
+
+        val (base, completedIds) = todayBaseAndCompleted()
+        persistToday(lastDayEpoch, base, completedIds, earnedIds, refreshCount)
+    }
+
+    fun flushTimerPersist() {
+        val pending = timerPersistJob
+        timerPersistJob = null
+        pending?.cancel()
         val (base, completedIds) = todayBaseAndCompleted()
         persistToday(lastDayEpoch, base, completedIds, earnedIds, refreshCount)
     }
@@ -2179,11 +2351,11 @@ Final output:
         scope.launch {
             snackbarHostState.currentSnackbarData?.dismiss()
             val message = when {
-                clamped > before.target -> "Ready to claim"
-                clamped == before.target -> "Marked done"
-                clamped <= 0 -> "Progress reset"
-                clamped == 1 -> "Quest started"
-                else -> "Progress $clamped/${before.target}"
+                clamped > before.target -> appContext.getString(R.string.progress_ready_to_claim)
+                clamped == before.target -> appContext.getString(R.string.progress_marked_done)
+                clamped <= 0 -> appContext.getString(R.string.progress_reset)
+                clamped == 1 -> appContext.getString(R.string.quest_started_msg)
+                else -> appContext.getString(R.string.progress_value_of_target, clamped, before.target)
             }
             val undoResult = snackbarHostState.showSnackbar(
                 message = message,
@@ -2282,6 +2454,106 @@ Final output:
         }
     }
 
+    fun onRemoveQuestFromToday(id: Int) {
+        val target = quests.firstOrNull { it.id == id } ?: return
+        var newTotalXp = totalXp
+        var newGold = gold
+        var newAttrs = attributes
+        var newEarned = earnedIds
+
+        if (newEarned.contains(id)) {
+            newTotalXp = (newTotalXp - target.xpReward).coerceAtLeast(0)
+            val rewardGold = calculateGoldReward(target.difficulty, streak)
+            newGold = (newGold - rewardGold).coerceAtLeast(0)
+            newAttrs = when (target.category) {
+                QuestCategory.FITNESS -> newAttrs.copy(str = (newAttrs.str - 1).coerceAtLeast(1))
+                QuestCategory.STUDY -> newAttrs.copy(int = (newAttrs.int - 1).coerceAtLeast(1))
+                QuestCategory.HYDRATION -> newAttrs.copy(vit = (newAttrs.vit - 1).coerceAtLeast(1))
+                QuestCategory.DISCIPLINE -> newAttrs.copy(end = (newAttrs.end - 1).coerceAtLeast(1))
+                QuestCategory.MIND -> newAttrs.copy(fth = (newAttrs.fth - 1).coerceAtLeast(1))
+            }
+            newEarned = newEarned - id
+        }
+
+        quests = quests.filterNot { it.id == id }
+        totalXp = newTotalXp
+        gold = newGold
+        attributes = newAttrs
+        earnedIds = newEarned
+        persistCore()
+        persistAttributes(newAttrs)
+
+        val (base, completedIds) = todayBaseAndCompleted()
+        persistToday(lastDayEpoch, base, completedIds, earnedIds, refreshCount)
+        updateHistory(lastDayEpoch, base, completedIds)
+        scope.launch { snackbarHostState.showSnackbar("Quest removed from today.") }
+    }
+
+    fun onOpenQuestEditorFromHome(id: Int) {
+        val targetQuest = quests.firstOrNull { it.id == id } ?: return
+        fun stableMatches(template: CustomTemplate): Boolean {
+            val q = QuestTemplate(
+                category = template.category,
+                difficulty = template.difficulty,
+                title = template.title,
+                icon = template.icon,
+                xp = template.xp,
+                target = template.target,
+                isPinned = template.isPinned,
+                imageUri = template.imageUri,
+                packageId = template.packageId,
+                objectiveType = template.objectiveType,
+                targetSeconds = template.targetSeconds,
+                healthMetric = template.healthMetric,
+                healthAggregation = template.healthAggregation
+            )
+            return stableQuestId(template.category, q) == targetQuest.id
+        }
+        var matchedTemplate = customTemplates.firstOrNull(::stableMatches)
+            ?: customTemplates.firstOrNull {
+                it.title.equals(targetQuest.title, ignoreCase = true) &&
+                    it.category == targetQuest.category &&
+                    it.packageId == targetQuest.packageId
+            }
+            ?: customTemplates.firstOrNull {
+                it.title.equals(targetQuest.title, ignoreCase = true) &&
+                    it.category == targetQuest.category
+            }
+            ?: customTemplates.firstOrNull { it.title.equals(targetQuest.title, ignoreCase = true) }
+
+        if (matchedTemplate == null) {
+            val created = CustomTemplate(
+                id = UUID.randomUUID().toString(),
+                category = targetQuest.category,
+                difficulty = targetQuest.difficulty.coerceIn(1, 5),
+                title = targetQuest.title,
+                icon = targetQuest.icon.ifBlank { "⭐" },
+                xp = targetQuest.xpReward.coerceIn(5, 500),
+                target = when (targetQuest.objectiveType) {
+                    QuestObjectiveType.HEALTH -> targetQuest.target.coerceAtLeast(100)
+                    QuestObjectiveType.TIMER -> (targetQuest.targetSeconds ?: targetQuest.target).coerceAtLeast(60)
+                    else -> targetQuest.target.coerceAtLeast(1)
+                },
+                isPinned = false,
+                imageUri = targetQuest.imageUri,
+                packageId = targetQuest.packageId,
+                objectiveType = targetQuest.objectiveType,
+                targetSeconds = if (targetQuest.objectiveType == QuestObjectiveType.TIMER) {
+                    (targetQuest.targetSeconds ?: targetQuest.target).coerceAtLeast(60)
+                } else null,
+                healthMetric = if (targetQuest.objectiveType == QuestObjectiveType.HEALTH) targetQuest.healthMetric else null,
+                healthAggregation = if (targetQuest.objectiveType == QuestObjectiveType.HEALTH) {
+                    targetQuest.healthAggregation ?: "daily_total"
+                } else null
+            )
+            persistCustomTemplates(customTemplates + created)
+            matchedTemplate = created
+        }
+        questsPreferredTab = 0
+        pendingHomeEditDailyTemplateId = matchedTemplate?.id
+        screen = Screen.QUESTS
+    }
+
     fun onToggleQuest(id: Int, force: Boolean = false) {
         val target = quests.firstOrNull { it.id == id } ?: return
         if (!force && target.completed && confirmComplete) { pendingUncheckQuestId = id; return }
@@ -2358,7 +2630,7 @@ Final output:
         scope.launch {
             snackbarHostState.currentSnackbarData?.dismiss()
             val undoResult = snackbarHostState.showSnackbar(
-                message = "+${questBefore.xpReward} XP earned",
+                message = appContext.getString(R.string.xp_earned_msg, questBefore.xpReward),
                 actionLabel = "UNDO",
                 duration = SnackbarDuration.Short
             )
@@ -2373,11 +2645,11 @@ Final output:
 
     fun onBuyShopItem(item: ShopItem) {
         if (item.cost <= 0) {
-            scope.launch { snackbarHostState.showSnackbar("Invalid item price") }
+            scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.invalid_item_price)) }
             return
         }
         if (item.stock <= 0) {
-            scope.launch { snackbarHostState.showSnackbar("${item.name} is out of stock") }
+            scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.item_out_of_stock, item.name)) }
             return
         }
         if (gold < item.cost) {
@@ -2393,7 +2665,7 @@ Final output:
         persistShopItems(updatedShop)
         SoundManager.playSuccess()
         AppLog.event("shop_buy", "item=${item.id},cost=${item.cost}")
-        scope.launch { snackbarHostState.showSnackbar("Used ${item.name}") }
+        scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.used_item_name, item.name)) }
     }
 
     fun onUpsertShopItem(item: ShopItem) {
@@ -2419,7 +2691,7 @@ Final output:
         val removed = shopItems.firstOrNull { it.id == id } ?: return
         persistShopItems(shopItems.filterNot { it.id == id })
         scope.launch {
-            val res = snackbarHostState.showSnackbar("Shop item removed", actionLabel = "UNDO", duration = SnackbarDuration.Short)
+            val res = snackbarHostState.showSnackbar(appContext.getString(R.string.shop_item_removed), actionLabel = "UNDO", duration = SnackbarDuration.Short)
             if (res == SnackbarResult.ActionPerformed) {
                 persistShopItems((shopItems + removed).distinctBy { it.id })
             }
@@ -2433,7 +2705,7 @@ Final output:
             } else {
                 inventory.filter { it.id != item.id }
             }
-            persistInventory(newInv); scope.launch { snackbarHostState.showSnackbar("Used ${item.name}") }
+            persistInventory(newInv); scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.used_item_name, item.name)) }
         }
     }
 
@@ -2775,19 +3047,47 @@ Final output:
         fontScalePercent = fontScalePercent,
         textColorOverride = textColorOverride
     ) {
-        if (showRefreshDayConfirm) { AlertDialog(onDismissRequest = { showRefreshDayConfirm = false }, title = { Text("Start New Day?") }, text = { Text("This forces a new day calculation.") }, confirmButton = { TextButton(onClick = { onRefreshDay(); showRefreshDayConfirm = false }) { Text("Start Day") } }, dismissButton = { TextButton(onClick = { showRefreshDayConfirm = false }) { Text("Cancel") } }) }
-        if (showLevelUpDialog) { AlertDialog(onDismissRequest = { showLevelUpDialog = false }, title = { Text("LEVEL UP!", fontWeight = FontWeight.Bold, color = accentStrong) }, text = { Text("Congratulations! You've reached Level $currentLevel. Your legend grows!") }, confirmButton = { TextButton(onClick = { showLevelUpDialog = false }) { Text("AWESOME") } }) }
+        ThemeRuntime.accentTransparencyPercent = accentTransparencyPercent
+        ThemeRuntime.textTransparencyPercent = textTransparencyPercent
+        ThemeRuntime.appBgTransparencyPercent = appBgTransparencyPercent
+        ThemeRuntime.chromeBgTransparencyPercent = chromeBgTransparencyPercent
+        ThemeRuntime.cardBgTransparencyPercent = cardBgTransparencyPercent
+        ThemeRuntime.journalPageTransparencyPercent = journalPageTransparencyPercent
+        ThemeRuntime.journalAccentTransparencyPercent = journalAccentTransparencyPercent
+        ThemeRuntime.buttonTransparencyPercent = buttonTransparencyPercent
+        if (showLoginRequiredDialog) {
+            AlertDialog(
+                onDismissRequest = { showLoginRequiredDialog = false },
+                title = { Text(stringResource(R.string.l10n_sign_in_required), color = OnCardText) },
+                text = { Text(stringResource(R.string.l10n_you_need_to_sign_in_with_google_to_use_thi), color = OnCardText.copy(alpha = 0.8f)) },
+                confirmButton = {
+                    TextButton(onClick = {
+                        showLoginRequiredDialog = false
+                        settingsExpandedSection = "hub"
+                        screen = Screen.SETTINGS
+                    }) { Text(stringResource(R.string.l10n_go_to_settings)) }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showLoginRequiredDialog = false }) {
+                        Text(stringResource(R.string.cancel), color = OnCardText.copy(alpha = 0.6f))
+                    }
+                },
+                containerColor = CardDarkBlue
+            )
+        }
+        if (showRefreshDayConfirm) { AlertDialog(onDismissRequest = { showRefreshDayConfirm = false }, title = { Text(stringResource(R.string.l10n_start_new_day)) }, text = { Text(stringResource(R.string.l10n_this_forces_a_new_day_calculation)) }, confirmButton = { TextButton(onClick = { onRefreshDay(); showRefreshDayConfirm = false }) { Text(stringResource(R.string.l10n_start_day)) } }, dismissButton = { TextButton(onClick = { showRefreshDayConfirm = false }) { Text(stringResource(R.string.cancel)) } }) }
+        if (showLevelUpDialog) { AlertDialog(onDismissRequest = { showLevelUpDialog = false }, title = { Text(stringResource(R.string.l10n_level_up), fontWeight = FontWeight.Bold, color = accentStrong) }, text = { Text(stringResource(R.string.level_up_congrats, currentLevel)) }, confirmButton = { TextButton(onClick = { showLevelUpDialog = false }) { Text(stringResource(R.string.l10n_awesome)) } }) }
         if (showBackupImport) {
             AlertDialog(
                 onDismissRequest = { showBackupImport = false },
-                title = { Text("Import Encrypted Backup") },
+                title = { Text(stringResource(R.string.l10n_import_encrypted_backup)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Paste your encrypted backup. Import applies immediately.", color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp)
+                        Text(stringResource(R.string.l10n_paste_your_encrypted_backup_import_applies), color = OnCardText.copy(alpha = 0.75f), fontSize = 12.sp)
                         OutlinedTextField(
                             value = backupImportPayload,
                             onValueChange = { backupImportPayload = it },
-                            label = { Text("Backup payload") },
+                            label = { Text(stringResource(R.string.l10n_backup_payload)) },
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -2798,45 +3098,45 @@ Final output:
                         showBackupImport = false
                         backupImportPayload = ""
                         scope.launch { snackbarHostState.showSnackbar(if (ok) "Backup imported." else "Backup import failed.") }
-                    }) { Text("Import") }
+                    }) { Text(stringResource(R.string.l10n_import)) }
                 },
                 dismissButton = {
-                    TextButton(onClick = { showBackupImport = false }) { Text("Cancel") }
+                    TextButton(onClick = { showBackupImport = false }) { Text(stringResource(R.string.cancel)) }
                 }
             )
         }
         if (showResetAll) {
             AlertDialog(
                 onDismissRequest = { showResetAll = false },
-                title = { Text("Reset everything?") },
+                title = { Text(stringResource(R.string.l10n_reset_everything)) },
                 text = {
                     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("This will erase progress and active data.")
+                        Text(stringResource(R.string.l10n_this_will_erase_progress_and_active_data))
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { resetBackupBefore = !resetBackupBefore },
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Checkbox(checked = resetBackupBefore, onCheckedChange = { resetBackupBefore = it })
-                        Text("Save current setup to Template before reset")
+                        Text(stringResource(R.string.l10n_save_current_setup_to_template_before_rese))
                         }
                         if (resetBackupBefore) {
                             OutlinedTextField(
                                 value = resetBackupName,
                                 onValueChange = { resetBackupName = it },
-                                label = { Text("Backup name") },
+                                label = { Text(stringResource(R.string.l10n_backup_name)) },
                                 singleLine = true
                             )
                         }
-                        Text("Default package will be enabled automatically after reset.")
+                        Text(stringResource(R.string.l10n_default_package_will_be_enabled_automatica))
                     }
                 },
                 confirmButton = {
                     TextButton(onClick = {
                         resetAll(resetBackupBefore)
                         showResetAll = false
-                    }) { Text("Reset") }
+                    }) { Text(stringResource(R.string.l10n_reset)) }
                 },
-                dismissButton = { TextButton(onClick = { showResetAll = false }) { Text("Cancel") } }
+                dismissButton = { TextButton(onClick = { showResetAll = false }) { Text(stringResource(R.string.cancel)) } }
             )
         }
         if (remixPostPending != null) {
@@ -2845,8 +3145,7 @@ Final output:
                 containerColor = CardDarkBlue,
                 title = {
                     Box(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "Add Template From Community?",
+                        Text(stringResource(R.string.l10n_add_template_from_community),
                             color = OnCardText,
                             fontWeight = FontWeight.Bold,
                             modifier = Modifier
@@ -2861,7 +3160,7 @@ Final output:
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
-                                contentDescription = "Close",
+                                contentDescription = stringResource(R.string.close),
                                 tint = OnCardText.copy(alpha = 0.82f)
                             )
                         }
@@ -2869,7 +3168,7 @@ Final output:
                 },
                 text = {
                     Text(
-                        "You're adding '${remixPostPending!!.title}' as a template from community content.",
+                        stringResource(R.string.remix_add_template_body, remixPostPending!!.title),
                         color = OnCardText.copy(alpha = 0.86f)
                     )
                 },
@@ -2878,18 +3177,18 @@ Final output:
                         val post = remixPostPending
                         remixPostPending = null
                         if (post != null) finalizeRemix(post, applyNow = true)
-                    }) { Text("Save & Apply", color = accentStrong, fontWeight = FontWeight.Bold) }
+                    }) { Text(stringResource(R.string.l10n_save_apply), color = accentStrong, fontWeight = FontWeight.Bold) }
                 },
                 dismissButton = {
                     TextButton(onClick = {
                         val post = remixPostPending
                         remixPostPending = null
                         if (post != null) finalizeRemix(post, applyNow = false)
-                    }) { Text("Save", color = OnCardText) }
+                    }) { Text(stringResource(R.string.save), color = OnCardText) }
                 }
             )
         }
-        if (pendingUncheckQuestId != null) { AlertDialog(onDismissRequest = { pendingUncheckQuestId = null }, title = { Text("Uncheck quest?") }, text = { Text("This will remove earned XP, but keep earned Gold/Stats.") }, confirmButton = { TextButton(onClick = { val id = pendingUncheckQuestId; pendingUncheckQuestId = null; if (id != null) onToggleQuest(id, force = true) }) { Text("Uncheck") } }, dismissButton = { TextButton(onClick = { pendingUncheckQuestId = null }) { Text("Cancel") } }) }
+        if (pendingUncheckQuestId != null) { AlertDialog(onDismissRequest = { pendingUncheckQuestId = null }, title = { Text(stringResource(R.string.l10n_uncheck_quest)) }, text = { Text(stringResource(R.string.l10n_this_will_remove_earned_xp_but_keep_earned)) }, confirmButton = { TextButton(onClick = { val id = pendingUncheckQuestId; pendingUncheckQuestId = null; if (id != null) onToggleQuest(id, force = true) }) { Text(stringResource(R.string.l10n_uncheck)) } }, dismissButton = { TextButton(onClick = { pendingUncheckQuestId = null }) { Text(stringResource(R.string.cancel)) } }) }
         if (showFocusTimer) { FocusTimerDialog(accentStrong = accentStrong, accentSoft = accentSoft, onDismiss = { showFocusTimer = false }, onComplete = { minutes -> awardFocusXp(minutes); showFocusTimer = false }) }
 
 // 1. Initial Import Dialog
@@ -2897,16 +3196,16 @@ Final output:
             AlertDialog(
                 onDismissRequest = { pendingImportTemplate = null },
                 containerColor = CardDarkBlue,
-                title = { Text("Save Template?", color = accentStrong, fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.l10n_save_template), color = accentStrong, fontWeight = FontWeight.Bold) },
                 text = {
                     Column {
-                        Text("You are about to save:", color = OnCardText)
-                        Text("• ${pendingImportTemplate!!.templateName}", fontWeight = FontWeight.Bold, color = accentStrong)
-                        Text("• ${pendingImportTemplate!!.dailyQuests.size} Daily Quests", color = OnCardText)
-                        Text("• ${pendingImportTemplate!!.mainQuests.size} Main Quests", color = OnCardText)
-                        Text("• ${pendingImportTemplate!!.shopItems.size} Shop Items", color = OnCardText)
-                        Text("• Theme: ${pendingImportTemplate!!.appTheme.name}", color = accentStrong)
-                        Text("• Includes advanced options + background if present", color = OnCardText.copy(alpha = 0.85f))
+                        Text(stringResource(R.string.l10n_you_are_about_to_save), color = OnCardText)
+                        Text(stringResource(R.string.template_bullet_name, pendingImportTemplate!!.templateName), fontWeight = FontWeight.Bold, color = accentStrong)
+                        Text(stringResource(R.string.template_bullet_daily_count, pendingImportTemplate!!.dailyQuests.size), color = OnCardText)
+                        Text(stringResource(R.string.template_bullet_main_count, pendingImportTemplate!!.mainQuests.size), color = OnCardText)
+                        Text(stringResource(R.string.template_bullet_shop_count, pendingImportTemplate!!.shopItems.size), color = OnCardText)
+                        Text(stringResource(R.string.template_bullet_theme_name, pendingImportTemplate!!.appTheme.name), color = accentStrong)
+                        Text(stringResource(R.string.l10n_includes_advanced_options_background_if_pr), color = OnCardText.copy(alpha = 0.85f))
                     }
                 },
                 confirmButton = {
@@ -2915,9 +3214,9 @@ Final output:
                         persistSavedTemplates(savedTemplates + t)
                         promptApplyTemplate = t // NEW: Trigger the follow-up dialog
                         pendingImportTemplate = null
-                    }) { Text("Save to Template", color = accentStrong) }
+                    }) { Text(stringResource(R.string.save_template_lib), color = accentStrong) }
                 },
-                dismissButton = { TextButton(onClick = { pendingImportTemplate = null }) { Text("Cancel", color = OnCardText) } }
+                dismissButton = { TextButton(onClick = { pendingImportTemplate = null }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
             )
         }
 
@@ -2926,7 +3225,7 @@ Final output:
             AlertDialog(
                 onDismissRequest = { promptApplyTemplate = null },
                 containerColor = CardDarkBlue,
-                title = { Text("Equip Template?", color = accentStrong, fontWeight = FontWeight.Bold) },
+                title = { Text(stringResource(R.string.equip_template_title), color = accentStrong, fontWeight = FontWeight.Bold) },
                 text = {
                     val t = promptApplyTemplate!!
                     val dailyDelta = t.dailyQuests.size - customTemplates.size
@@ -2935,15 +3234,15 @@ Final output:
                     val minCost = t.shopItems.minOfOrNull { it.cost.coerceAtLeast(1) } ?: 0
                     val affordableCount = t.shopItems.count { gold >= it.cost.coerceAtLeast(1) }
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Text("Template saved! Are you sure you want to apply it now?", color = OnCardText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                        Text("This will change theme, background, advanced settings, and quests.", color = OnCardText.copy(alpha = 0.85f), fontSize = 13.sp)
+                        Text(stringResource(R.string.l10n_template_saved_are_you_sure_you_want_to_ap), color = OnCardText, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        Text(stringResource(R.string.l10n_this_will_change_theme_background_advanced), color = OnCardText.copy(alpha = 0.85f), fontSize = 13.sp)
                         Text(
-                            "Preview: Daily ${if (dailyDelta >= 0) "+" else ""}$dailyDelta, Main ${if (mainDelta >= 0) "+" else ""}$mainDelta, Shop ${if (shopDelta >= 0) "+" else ""}$shopDelta",
+                            stringResource(R.string.template_preview_delta_line, if (dailyDelta >= 0) "+$dailyDelta" else "$dailyDelta", if (mainDelta >= 0) "+$mainDelta" else "$mainDelta", if (shopDelta >= 0) "+$shopDelta" else "$shopDelta"),
                             color = OnCardText.copy(alpha = 0.84f),
                             fontSize = 12.sp
                         )
                         Text(
-                            "Economy: ${if (minCost > 0) "min item $minCost gold" else "no shop items"} • affordable now $affordableCount/${t.shopItems.size}",
+                            stringResource(R.string.template_economy_line, if (minCost > 0) appContext.getString(R.string.template_economy_min_item_gold, minCost) else appContext.getString(R.string.template_economy_no_shop_items), affordableCount, t.shopItems.size),
                             color = OnCardText.copy(alpha = 0.72f),
                             fontSize = 12.sp
                         )
@@ -2952,16 +3251,16 @@ Final output:
                         // NEW: Clear Existing Checkbox
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { importClearExisting = !importClearExisting }) {
                             Checkbox(checked = importClearExisting, onCheckedChange = { importClearExisting = it }, colors = CheckboxDefaults.colors(checkedColor = accentStrong))
-                            Text("Clear my current quests first", color = OnCardText, fontSize = 14.sp)
+                            Text(stringResource(R.string.clear_existing_quests), color = OnCardText, fontSize = 14.sp)
                         }
 
                         // Backup Checkbox
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clickable { importBackupBeforeApply = !importBackupBeforeApply }) {
                             Checkbox(checked = importBackupBeforeApply, onCheckedChange = { importBackupBeforeApply = it }, colors = CheckboxDefaults.colors(checkedColor = accentStrong))
-                            Text("Backup current setup to Template", color = OnCardText, fontSize = 14.sp)
+                            Text(stringResource(R.string.backup_current_setup), color = OnCardText, fontSize = 14.sp)
                         }
                         if (importBackupBeforeApply) {
-                            OutlinedTextField(value = importBackupName, onValueChange = { importBackupName = it }, label = { Text("Backup Name", color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
+                            OutlinedTextField(value = importBackupName, onValueChange = { importBackupName = it }, label = { Text(stringResource(R.string.backup_name_label), color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
                         }
                     }
                 },
@@ -3026,13 +3325,13 @@ Final output:
 
                         scope.launch { snackbarHostState.showSnackbar("Theme & Quests Applied!") }
                         promptApplyTemplate = null
-                    }) { Text("Yes, Equip Now", color = accentStrong) }
+                    }) { Text(stringResource(R.string.l10n_yes_equip_now), color = accentStrong) }
                 },
                 dismissButton = {
                     TextButton(onClick = {
                         scope.launch { snackbarHostState.showSnackbar("Template saved.") }
                         promptApplyTemplate = null
-                    }) { Text("No, Later", color = OnCardText) }
+                    }) { Text(stringResource(R.string.l10n_no_later), color = OnCardText) }
                 }
             )
         }
@@ -3081,7 +3380,13 @@ Final output:
                 persistMainQuests(mainQuests.filter { it.packageId != pid })
 
                 // 3. Remove Shop Items belonging to this pack
-                persistShopItems(shopItems.filterNot { it.id.startsWith("${pid}_") })
+                val afterPackageRemoval = shopItems.filterNot { it.id.startsWith("${pid}_") }
+                val finalShop = if (pid == REAL_DAILY_LIFE_PACKAGE_ID) {
+                    afterPackageRemoval.filterNot { it.id == "shop_apple" || it.id == "shop_coffee" }
+                } else {
+                    afterPackageRemoval
+                }
+                persistShopItems(finalShop)
 
                 SoundManager.playClick()
             }
@@ -3112,7 +3417,7 @@ Final output:
                     drawerContainerColor = drawerBg
                 ) {
                     Spacer(Modifier.height(16.dp))
-                    Text("Questify", modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = drawerContentColor)
+                    Text(stringResource(R.string.app_name), modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp), fontWeight = FontWeight.ExtraBold, fontSize = 16.sp, color = drawerContentColor)
                     DrawerItem(stringResource(R.string.nav_home), Icons.Default.Home, screen == Screen.HOME, accentStrong, drawerBg, drawerContentColor) { SoundManager.playClick(); screen = Screen.HOME; scope.launch { drawerState.close() } }
                     DrawerItem(stringResource(R.string.nav_dashboard), Icons.Default.QueryStats, screen == Screen.STATS, accentStrong, drawerBg, drawerContentColor) { SoundManager.playClick(); screen = Screen.STATS; scope.launch { drawerState.close() } }
                     DrawerItem(stringResource(R.string.title_shop), Icons.Default.Backpack, screen == Screen.INVENTORY, accentStrong, drawerBg, drawerContentColor) { SoundManager.playClick(); screen = Screen.INVENTORY; scope.launch { drawerState.close() } }
@@ -3188,12 +3493,464 @@ Final output:
                     }
                 }) { padding ->
                 val drawerClosed = drawerState.currentValue == DrawerValue.Closed && !drawerState.isAnimationRunning
+                val questsScreenContent: @Composable () -> Unit = {
+                    QuestsScreen(
+                                                   modifier = Modifier.fillMaxSize().padding(padding),
+                                                   accentStrong = accentStrong,
+                                                   accentSoft = accentSoft,
+                                                   customMode = customMode,
+                                                   dailyTemplates = customTemplates,
+                                                   mainQuests = mainQuests,
+                                                   savedTemplates = savedTemplates,
+                                                   activePackageIds = activePackageIds, // NEW
+                                                   onTogglePackage = { t, b -> onTogglePackage(t, b) }, // NEW
+                                                   onUpsertDaily = { t ->
+                                                       if (!customMode) {
+                                                           scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+                                                           return@QuestsScreen
+                                                       }
+                                                       val list = customTemplates.toMutableList()
+                                                       val idx = list.indexOfFirst { it.id == t.id }
+                                                       val oldTemplate = if (idx >= 0) list[idx] else null
+                                                       val isNewTemplate = idx < 0
+                                                       if (idx >= 0) list[idx] = t else list.add(t)
+                                                       persistCustomTemplates(list)
+                                                       if (isNewTemplate) {
+                                                           regenerateForDay(currentEpochDay())
+                                                       } else if (oldTemplate != null) {
+                                                           fun stableId(template: CustomTemplate): Int {
+                                                               val qt = QuestTemplate(
+                                                                   category = template.category,
+                                                                   difficulty = template.difficulty,
+                                                                   title = template.title,
+                                                                   icon = template.icon,
+                                                                   xp = template.xp,
+                                                                   target = template.target,
+                                                                   isPinned = template.isPinned,
+                                                                   imageUri = template.imageUri,
+                                                                   packageId = template.packageId,
+                                                                   objectiveType = template.objectiveType,
+                                                                   targetSeconds = template.targetSeconds,
+                                                                   healthMetric = template.healthMetric,
+                                                                   healthAggregation = template.healthAggregation
+                                                               )
+                                                               return stableQuestId(template.category, qt)
+                                                           }
+                                                           val oldQuestId = stableId(oldTemplate)
+                                                           val matchIndex = quests.indexOfFirst { q ->
+                                                               q.id == oldQuestId ||
+                                                                   (q.title.equals(oldTemplate.title, ignoreCase = true) &&
+                                                                       q.category == oldTemplate.category &&
+                                                                       q.packageId == oldTemplate.packageId)
+                                                           }
+                                                           if (matchIndex >= 0) {
+                                                               val newQuestId = stableId(t)
+                                                               val existing = quests[matchIndex]
+                                                               val nextTarget = when (t.objectiveType) {
+                                                                   QuestObjectiveType.TIMER -> (t.targetSeconds ?: t.target).coerceAtLeast(60)
+                                                                   QuestObjectiveType.HEALTH -> t.target.coerceAtLeast(100)
+                                                                   QuestObjectiveType.COUNT -> t.target.coerceAtLeast(1)
+                                                               }
+                                                               val updatedQuest = existing.copy(
+                                                                   id = newQuestId,
+                                                                   title = t.title,
+                                                                   xpReward = t.xp,
+                                                                   icon = t.icon,
+                                                                   category = t.category,
+                                                                   difficulty = t.difficulty,
+                                                                   target = nextTarget,
+                                                                   currentProgress = if (existing.completed) nextTarget else existing.currentProgress.coerceAtMost(nextTarget),
+                                                                   imageUri = t.imageUri,
+                                                                   packageId = t.packageId,
+                                                                   objectiveType = t.objectiveType,
+                                                                   targetSeconds = if (t.objectiveType == QuestObjectiveType.TIMER) nextTarget else null,
+                                                                   healthMetric = if (t.objectiveType == QuestObjectiveType.HEALTH) t.healthMetric else null,
+                                                                   healthAggregation = if (t.objectiveType == QuestObjectiveType.HEALTH) (t.healthAggregation ?: "daily_total") else null
+                                                               )
+                                                               val nextQuests = quests.toMutableList()
+                                                               nextQuests[matchIndex] = updatedQuest
+                                                               quests = nextQuests
+                                                               if (oldQuestId != newQuestId && earnedIds.contains(oldQuestId)) {
+                                                                   earnedIds = (earnedIds - oldQuestId) + newQuestId
+                                                               }
+                                                               val (base, completedIds) = todayBaseAndCompleted()
+                                                               persistToday(lastDayEpoch, base, completedIds, earnedIds, refreshCount)
+                                                               updateHistory(lastDayEpoch, base, completedIds)
+                                                           }
+                                                       }
+                                                       scope.launch { snackbarHostState.showSnackbar("Daily quest saved.") }
+                                                   },
+                                                   onDeleteDaily = { id ->
+                                                       if (!customMode) {
+                                                           scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+                                                           return@QuestsScreen
+                                                       }
+                                                       val list = customTemplates.filterNot { it.id == id }
+                                                       persistCustomTemplates(list)
+                                                       scope.launch { snackbarHostState.showSnackbar("Daily quest deleted.") }
+                                                   },
+                                                   onUpsertMain = { mq ->
+                                                       if (!customMode) {
+                                                           scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+                                                           return@QuestsScreen
+                                                       }
+                                                       val list = mainQuests.toMutableList()
+                                                       val idx = list.indexOfFirst { it.id == mq.id }
+                                                       if (idx >= 0) list[idx] = mq else list.add(mq)
+                                                       persistMainQuests(list)
+                                                       scope.launch { snackbarHostState.showSnackbar("Main quest saved.") }
+                                                   },
+                                                   onDeleteMain = { id ->
+                                                       if (!customMode) {
+                                                           scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+                                                           return@QuestsScreen
+                                                       }
+                                                       val list = mainQuests.filterNot { it.id == id }
+                                                       persistMainQuests(list)
+                                                       scope.launch { snackbarHostState.showSnackbar("Main quest deleted.") }
+                                                   },
+                                                   onRestoreDefaults = { restoreDefaultQuests() },
+                                                   onExportTemplate = { templateName ->
+                                                       val template = GameTemplate(
+                                                           templateName,
+                                                           appTheme,
+                                                           customTemplatesToQuestTemplates(customTemplates),
+                                                           mainQuests,
+                                                           shopItems,
+                                                           templateSettings = currentTemplateSettings(),
+                                                           accentArgb = accent.toArgbCompat().toLong()
+                                                       )
+                                                       val compressedPayload = exportGameTemplate(template)
+                                                       val link = "https://qn8r.github.io/Questify/?data=$compressedPayload"
+                                                       val sendIntent = Intent().apply { action = Intent.ACTION_SEND; putExtra(Intent.EXTRA_TEXT, "Check out my Questify Template: $templateName!\n\n$link"); type = "text/plain" }
+                                                       appContext.startActivity(Intent.createChooser(sendIntent, "Share Template"))
+                                                   },
+                                                   onSaveCurrentToLibrary = { templateName ->
+                                                       val template = GameTemplate(
+                                                           templateName,
+                                                           appTheme,
+                                                           customTemplatesToQuestTemplates(customTemplates),
+                                                           mainQuests,
+                                                           shopItems,
+                                                           templateSettings = currentTemplateSettings(),
+                                                           accentArgb = accent.toArgbCompat().toLong()
+                                                       )
+                                                       persistSavedTemplates(savedTemplates + template)
+                                                       scope.launch { snackbarHostState.showSnackbar("Template saved.") }
+                                                   },
+                                                   onApplySavedTemplate = { t, backupName, clearExisting -> // UPDATED: Added clearExisting
+                                                       val safeTemplate = runCatching { normalizeGameTemplateSafe(t) }.getOrElse {
+                                                           scope.launch { snackbarHostState.showSnackbar("Template is incompatible. Re-export it from latest app version.") }
+                                                           return@QuestsScreen
+                                                       }
+                                                       if (!backupName.isNullOrBlank()) {
+                                                           val backup = GameTemplate(
+                                                               backupName,
+                                                               appTheme,
+                                                               customTemplatesToQuestTemplates(customTemplates),
+                                                               mainQuests,
+                                                               shopItems,
+                                                               templateSettings = currentTemplateSettings(),
+                                                               accentArgb = accent.toArgbCompat().toLong()
+                                                           )
+                                                           persistSavedTemplates(savedTemplates + backup)
+                                                       }
+                                                       appTheme = normalizeTheme(safeTemplate.appTheme)
+                                                       accent = safeTemplate.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
+                                                       applyTemplateSettings(safeTemplate.templateSettings)
+                                                       persistSettings()
+
+                                                       val mappedDailies = safeTemplate.dailyQuests.map { qt ->
+                                                           CustomTemplate(
+                                                               id = UUID.randomUUID().toString(),
+                                                               category = qt.category,
+                                                               difficulty = qt.difficulty,
+                                                               title = qt.title,
+                                                               icon = qt.icon,
+                                                               xp = qt.xp,
+                                                               target = qt.target,
+                                                               isPinned = qt.isPinned,
+                                                               imageUri = qt.imageUri,
+                                                               packageId = safeTemplate.packageId,
+                                                               objectiveType = qt.objectiveType,
+                                                               targetSeconds = qt.targetSeconds,
+                                                               healthMetric = qt.healthMetric,
+                                                               healthAggregation = qt.healthAggregation
+                                                           )
+                                                       }
+
+                                                       if (clearExisting) {
+                                                           persistCustomTemplates(mappedDailies)
+                                                           persistMainQuests(safeTemplate.mainQuests)
+                                                           persistShopItems(safeTemplate.shopItems)
+                                                           activePackageIds = setOf(safeTemplate.packageId)
+                                                           applyTemplateDailyQuestDefaults(safeTemplate.packageId, clearExisting = true)
+                                                           persistSettings()
+                                                       } else {
+                                                           val newCustoms = customTemplates + mappedDailies
+                                                           persistCustomTemplates(newCustoms.distinctBy { it.title })
+                                                           val newMqs = mainQuests + safeTemplate.mainQuests
+                                                           persistMainQuests(newMqs.distinctBy { it.title })
+                                                           if (safeTemplate.shopItems.isNotEmpty()) {
+                                                               val mergedShop = (shopItems + safeTemplate.shopItems).distinctBy { it.id }
+                                                               persistShopItems(mergedShop)
+                                                           }
+                                                           activePackageIds = activePackageIds + safeTemplate.packageId
+                                                       }
+                                                       scope.launch { appContext.dataStore.edit { p -> p[activePacksKey] = activePackageIds.joinToString(",") } }
+                                                       scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.theme_quests_applied)) }
+                                                   },
+                                                   onDeleteSavedTemplate = { t ->
+                                                        persistSavedTemplates(savedTemplates.filterNot { it == t })
+                                                        scope.launch {
+                                                            val res = snackbarHostState.showSnackbar(appContext.getString(R.string.template_deleted), actionLabel = "UNDO", duration = SnackbarDuration.Short)
+                                                            if (res == SnackbarResult.ActionPerformed) {
+                                                                persistSavedTemplates((savedTemplates + t).distinctBy { "${it.packageId}|${it.templateName}" })
+                                                            }
+                                                        }
+                                                    },
+                                                    onRequireCustomMode = {
+                                                        scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.enable_custom_mode_add_quests)) }
+                                                    },
+                                                    onDeleteCategory = { cat ->
+                                                        val list = customTemplates.filterNot { it.category == cat }
+                                                        persistCustomTemplates(list)
+                                                        scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.all_category_quests_deleted, cat.name)) }
+                                                    },
+                                                   onDeleteChain = { family ->
+                                                       fun parseFamily(title: String): String {
+                                                           val m = Regex("""^(.*?)(?:\s+(\d+))$""").find(title.trim())
+                                                           return (m?.groupValues?.getOrNull(1)?.trim().takeUnless { it.isNullOrBlank() } ?: title.trim())
+                                                       }
+                                                       val familyKey = parseFamily(family).lowercase(java.util.Locale.getDefault())
+                                                       val list = mainQuests.filterNot { parseFamily(it.title).lowercase(java.util.Locale.getDefault()) == familyKey }
+                                                       persistMainQuests(list)
+                                                       scope.launch { snackbarHostState.showSnackbar("All \"$family\" quests deleted.") }
+                                                   },
+                                                   onOpenCommunityTemplates = { screen = Screen.COMMUNITY },
+                                                   onOpenAdvancedTemplates = {
+                                                       settingsExpandedSection = "advanced_templates"
+                                                       screen = Screen.SETTINGS
+                                                   },
+                                                   showTutorial = !questsTutorialSeen,
+                                                   onTutorialDismiss = { markQuestsTutorialSeen() },
+                                                   initialTab = questsPreferredTab,
+                                                   openDailyEditorForId = pendingHomeEditDailyTemplateId,
+                                                   onOpenDailyEditorHandled = { pendingHomeEditDailyTemplateId = null },
+                                                   onOpenDrawer = { scope.launch { drawerState.open() } },
+                                                   onOpenSettings = { screen = Screen.SETTINGS }
+                                               )
+                }
+                val settingsScreenContent: @Composable () -> Unit = {
+                    SettingsScreen(
+                                                   modifier = Modifier.fillMaxSize().padding(padding),
+                                                   autoNewDay = autoNewDay,
+                                                   confirmComplete = confirmComplete,
+                                                   refreshIncompleteOnly = refreshIncompleteOnly,
+                                                   customMode = customMode,
+                                                   advancedOptions = advancedOptions,
+                                                   highContrastText = highContrastText,
+                                                   compactMode = compactMode,
+                                                   largerTouchTargets = largerTouchTargets,
+                                                   reduceAnimations = reduceAnimations,
+                                                   decorativeBorders = neonFlowEnabled,
+                                                   neonLightBoost = neonLightBoost,
+                                                   neonFlowEnabled = neonFlowEnabled,
+                                                   neonFlowSpeed = neonFlowSpeed,
+                                                   neonGlowPalette = neonGlowPalette,
+                                                   alwaysShowQuestProgress = alwaysShowQuestProgress,
+                                                   hideCompletedQuests = hideCompletedQuests,
+                                                   confirmDestructiveActions = confirmDestructiveActions,
+                                                   dailyResetHour = dailyResetHour,
+                                                   dailyQuestTarget = dailyQuestTarget,
+                                                   expandedSection = settingsExpandedSection,
+                                                   premiumUnlocked = premiumUnlocked,
+                                                   cloudSyncEnabled = cloudSyncEnabled,
+                                                   cloudConnected = isLoggedIn,
+                                                   cloudAccountEmail = if (isLoggedIn) authUserEmail else "",
+                                                   cloudLastSyncAt = cloudLastSyncAt,
+                                                   dailyRemindersEnabled = dailyRemindersEnabled,
+                                                   hapticsEnabled = hapticsEnabled,
+                                                   soundEffectsEnabled = soundEffectsEnabled,
+                                                   fontStyle = fontStyle,
+                                                   fontScalePercent = fontScalePercent,
+                                                   appLanguage = appLanguage,
+                                                   backgroundImageTransparencyPercent = backgroundImageTransparencyPercent,
+                                                   accentTransparencyPercent = accentTransparencyPercent,
+                                                   textTransparencyPercent = textTransparencyPercent,
+                                                   appBgTransparencyPercent = appBgTransparencyPercent,
+                                                   chromeBgTransparencyPercent = chromeBgTransparencyPercent,
+                                                   cardBgTransparencyPercent = cardBgTransparencyPercent,
+                                                   journalPageTransparencyPercent = journalPageTransparencyPercent,
+                                                   journalAccentTransparencyPercent = journalAccentTransparencyPercent,
+                                                   buttonTransparencyPercent = buttonTransparencyPercent,
+                                                   journalName = journalName,
+                                                   textColorOverride = textColorOverride,
+                                                   appBackgroundColorOverride = appBackgroundColorOverride,
+                                                   chromeBackgroundColorOverride = chromeBackgroundColorOverride,
+                                                   cardColorOverride = cardColorOverride,
+                                                   buttonColorOverride = buttonColorOverride,
+                                                   journalPageColorOverride = journalPageColorOverride,
+                                                   journalAccentColorOverride = journalAccentColorOverride,
+                                                   appTheme = appTheme,
+                                                   accentStrong = accentStrong,
+                                                   accentSoft = accentSoft,
+                                                   onAutoNewDayChanged = { autoNewDay = it; persistSettings() },
+                                                   onConfirmCompleteChanged = { confirmComplete = it; persistSettings() },
+                                                   onRefreshIncompleteOnlyChanged = { refreshIncompleteOnly = it; persistSettings() },
+                                                   onCustomModeChanged = { customMode = it; persistSettings() },
+                                                   onAdvancedOptionsChanged = { advancedOptions = it; persistSettings() },
+                                                   onHighContrastTextChanged = { highContrastText = it; persistSettings() },
+                                                   onCompactModeChanged = { compactMode = it; persistSettings() },
+                                                   onLargeTouchTargetsChanged = { largerTouchTargets = it; persistSettings() },
+                                                   onReduceAnimationsChanged = { reduceAnimations = it; persistSettings() },
+                                                   onDecorativeBordersChanged = {
+                                                       decorativeBorders = it
+                                                       neonFlowEnabled = it
+                                                       persistSettings()
+                                                   },
+                                                   onNeonLightBoostChanged = { neonLightBoost = it; persistSettings() },
+                                                   onNeonFlowEnabledChanged = {
+                                                       neonFlowEnabled = it
+                                                       decorativeBorders = it
+                                                       persistSettings()
+                                                   },
+                                                   onNeonFlowSpeedChanged = { neonFlowSpeed = it.coerceIn(0, 2); persistSettings() },
+                                                   onNeonGlowPaletteChanged = { neonGlowPalette = it.ifBlank { "magenta" }; persistSettings() },
+                                                   onAlwaysShowQuestProgressChanged = { alwaysShowQuestProgress = it; persistSettings() },
+                                                   onHideCompletedQuestsChanged = { hideCompletedQuests = it; persistSettings() },
+                                                   onConfirmDestructiveChanged = { confirmDestructiveActions = it; persistSettings() },
+                                                   onDailyResetHourChanged = { dailyResetHour = it.coerceIn(0, 23); persistSettings() },
+                                                   onDailyQuestTargetChanged = { dailyQuestTarget = it.coerceIn(3, 10); persistSettings(); regenerateForDay(currentEpochDay()) },
+                                                   onExpandedSectionChanged = { settingsExpandedSection = it },
+                                                   onPremiumUnlockedChanged = { premiumUnlocked = it; persistSettings() },
+                                                   onCloudSyncEnabledChanged = { cloudSyncEnabled = it; persistSettings() },
+                                                   onCloudEmailChanged = { cloudAccountEmail = it.take(60); persistSettings() },
+                                                   onDailyRemindersEnabledChanged = { dailyRemindersEnabled = it; persistSettings() },
+                                                   onHapticsChanged = { hapticsEnabled = it; persistSettings() },
+                                                   onSoundEffectsChanged = { soundEffectsEnabled = it; persistSettings() },
+                                                   onFontStyleChanged = { fontStyle = it; persistSettings() },
+                                                   onFontScalePercentChanged = { fontScalePercent = it.coerceIn(80, 125); persistSettings() },
+                                                   onAppLanguageChanged = { lang ->
+                                                       appLanguage = lang
+                                                       appContext.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
+                                                           .edit().putString("selected_language", lang).commit()
+                                                       scope.launch {
+                                                           appContext.dataStore.edit { p -> p[Keys.APP_LANGUAGE] = lang }
+                                                           (appContext as android.app.Activity).recreate()
+                                                       }
+                                                   },
+                                                   onJournalNameChanged = { journalName = it.take(24).ifBlank { "Journal" }; persistSettings() },
+                                                   onTextColorChanged = { textColorOverride = it; persistSettings() },
+                                                   backgroundImageUri = backgroundImageUri,
+                                                   onBackgroundImageChanged = {
+                                                       backgroundImageUri = it
+                                                       persistSettings()
+                                                   },
+                                                   onBackgroundImageTransparencyPercentChanged = {
+                                                       backgroundImageTransparencyPercent = it.coerceIn(0, 100)
+                                                       persistSettings()
+                                                   },
+                                                   onAccentTransparencyChanged = { accentTransparencyPercent = it.coerceIn(0, 100); persistSettings() },
+                                                   onTextTransparencyChanged = { textTransparencyPercent = it.coerceIn(0, 100); persistSettings() },
+                                                   onAppBgTransparencyChanged = { appBgTransparencyPercent = it.coerceIn(0, 100); persistSettings() },
+                                                   onChromeBgTransparencyChanged = { chromeBgTransparencyPercent = it.coerceIn(0, 100); persistSettings() },
+                                                   onCardBgTransparencyChanged = { cardBgTransparencyPercent = it.coerceIn(0, 100); persistSettings() },
+                                                   onJournalPageTransparencyChanged = { journalPageTransparencyPercent = it.coerceIn(0, 100); persistSettings() },
+                                                   onJournalAccentTransparencyChanged = { journalAccentTransparencyPercent = it.coerceIn(0, 100); persistSettings() },
+                                                   onButtonTransparencyChanged = { buttonTransparencyPercent = it.coerceIn(0, 100); persistSettings() },
+                                                   onAppBackgroundColorChanged = { appBackgroundColorOverride = it; persistSettings() },
+                                                   onChromeBackgroundColorChanged = { chromeBackgroundColorOverride = it; persistSettings() },
+                                                   onCardColorChanged = { cardColorOverride = it; persistSettings() },
+                                                   onButtonColorChanged = { buttonColorOverride = it; persistSettings() },
+                                                   onJournalPageColorChanged = { journalPageColorOverride = it; persistSettings() },
+                                                   onJournalAccentColorChanged = { journalAccentColorOverride = it; persistSettings() },
+                                                   onThemeChanged = {
+                                                       appTheme = normalizeTheme(it)
+                                                       if (buttonColorOverride == null) {
+                                                           accent = fallbackAccentForTheme(appTheme)
+                                                       }
+                                                       persistSettings()
+                                                   },
+                                                   onAccentChanged = {
+                                                       accent = it
+                                                       buttonColorOverride = null
+                                                       persistSettings()
+                                                   },
+                                                   onExportBackup = {
+                                                       val blob = exportBackupPayload()
+                                                       if (blob.isBlank()) {
+                                                           scope.launch { snackbarHostState.showSnackbar("Backup export failed.") }
+                                                       } else {
+                                                           val sendIntent = Intent().apply {
+                                                               action = Intent.ACTION_SEND
+                                                               putExtra(Intent.EXTRA_TEXT, blob)
+                                                               type = "text/plain"
+                                                           }
+                                                           appContext.startActivity(Intent.createChooser(sendIntent, "Export Encrypted Backup"))
+                                                       }
+                                                   },
+                                                   onImportBackup = {
+                                                       showBackupImport = true
+                                                   },
+                                                   onCloudSyncNow = { triggerCloudSnapshotSync(force = true) },
+                                                   onCloudRestore = { restoreFromCloud() },
+                                                   onCloudConnectRequest = {
+                                                       performGoogleLogin()
+                                                   },
+                                                   onCloudDisconnect = { performLogout() },
+                                                   onSendFeedback = { category, text -> shareFeedbackReport(category, text) },
+                                                   onExportLogs = {
+                                                       val sendIntent = Intent().apply {
+                                                           action = Intent.ACTION_SEND
+                                                           putExtra(Intent.EXTRA_TEXT, AppLog.exportRecentLogs().ifBlank { "No logs captured." })
+                                                           type = "text/plain"
+                                                       }
+                                                       appContext.startActivity(Intent.createChooser(sendIntent, "Export Logs"))
+                                                   },
+                                                   onBuildAdvancedTemplateStarterJson = { buildAdvancedTemplateStarterJson() },
+                                                   onBuildAdvancedTemplatePromptFromRequest = { request, allowThemeChanges ->
+                                                       buildAdvancedTemplatePromptFromRequest(request, allowThemeChanges)
+                                                   },
+                                                   onImportAdvancedTemplateJson = { json ->
+                                                       val result = importAdvancedTemplateJson(json)
+                                                        if (result.success) {
+                                                            scope.launch {
+                                                                snackbarHostState.showSnackbar(appContext.getString(R.string.template_imported_counts, result.dailyAdded, result.mainAdded))
+                                                            }
+                                                        }
+                                                       result
+                                                   },
+                                                   onApplyAdvancedTemplateByPackage = { pkg ->
+                                                       val ok = applyAdvancedImportedTemplate(pkg)
+                                                       if (ok) {
+                                                           scope.launch { snackbarHostState.showSnackbar("Advanced template applied.") }
+                                                       }
+                                                       ok
+                                                   },
+                                                   onRequestResetAll = {
+                                                       if (confirmDestructiveActions) {
+                                                           resetBackupBefore = false
+                                                           resetBackupName = "Pre-reset backup"
+                                                           showResetAll = true
+                                                       } else {
+                                                           resetAll(saveBackup = false)
+                                                       }
+                                                   },
+                                                   onRequestForceNewDay = {
+                                                       if (confirmDestructiveActions) {
+                                                           showRefreshDayConfirm = true
+                                                       } else {
+                                                           onRefreshDay()
+                                                       }
+                                                   },
+                                                   onOpenDrawer = { scope.launch { drawerState.open() } }
+                                               )
+                }
                 val renderScreen: @Composable (Screen) -> Unit = { target ->
                     CompositionLocalProvider(LocalHeaderThemeToggle provides {
-                        appTheme = if (appTheme == AppTheme.LIGHT) AppTheme.DEFAULT else AppTheme.LIGHT
-                        if (buttonColorOverride == null) {
-                            accent = fallbackAccentForTheme(appTheme)
-                        }
+                        settingsExpandedSection = "appearance"
+                        screen = Screen.SETTINGS
                         persistSettings()
                     }) {
                     Box(modifier = Modifier.fillMaxSize()) {
@@ -3216,7 +3973,14 @@ Final output:
                                     )
                             )
                         }
-                        Surface(modifier = Modifier.fillMaxSize(), color = if (backgroundImageUri.isNullOrBlank()) themeBg else themeBg.copy(alpha = 1f - (backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f))) {
+                        Surface(
+                            modifier = Modifier.fillMaxSize(),
+                            color = if (backgroundImageUri.isNullOrBlank()) {
+                                themeBg.copy(alpha = appBgAlpha)
+                            } else {
+                                themeBg.copy(alpha = appBgAlpha * (1f - (backgroundImageTransparencyPercent.coerceIn(0, 100) / 100f)))
+                            }
+                        ) {
                         when (target) {
                             // FIXED: Screen.HOME now passes the bosses list
                             Screen.HOME -> HomeScreen(
@@ -3225,8 +3989,13 @@ Final output:
                                 { onRefreshTodayQuests() },
                                 homeRefreshInProgress,
                                 { onClaimQuestWithUndo(it) },
-                                { id, prog -> onUpdateQuestProgressWithUndo(id, prog) }, // NEW: Pass the progress handler
+                                { id, prog -> onUpdateQuestProgressWithUndo(id, prog) },
+                                { id, prog -> onTimerTickProgress(id, prog) },
+                                { id, prog -> onTimerComplete(id, prog) },
+                                { flushTimerPersist() },
                                 { id -> onResetQuestProgressWithUndo(id) },
+                                { id -> onRemoveQuestFromToday(id) },
+                                { id -> onOpenQuestEditorFromHome(id) },
                                 communityUserName,
                                 { name ->
                                     val fixed = name.trim().ifBlank { communityUserName }
@@ -3344,174 +4113,7 @@ Final output:
                                 onOpenSettings = { screen = Screen.SETTINGS }
                             )
 
-                            Screen.QUESTS -> QuestsScreen(
-                                modifier = Modifier.fillMaxSize().padding(padding),
-                                accentStrong = accentStrong,
-                                accentSoft = accentSoft,
-                                customMode = customMode,
-                                dailyTemplates = customTemplates,
-                                mainQuests = mainQuests,
-                                savedTemplates = savedTemplates,
-                                activePackageIds = activePackageIds, // NEW
-                                onTogglePackage = { t, b -> onTogglePackage(t, b) }, // NEW
-                                onUpsertDaily = { t ->
-                                    if (!customMode) {
-                                        scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
-                                        return@QuestsScreen
-                                    }
-                                    val list = customTemplates.toMutableList()
-                                    val idx = list.indexOfFirst { it.id == t.id }
-                                    val isNewTemplate = idx < 0
-                                    if (idx >= 0) list[idx] = t else list.add(t)
-                                    persistCustomTemplates(list)
-                                    if (isNewTemplate) {
-                                        regenerateForDay(currentEpochDay())
-                                    }
-                                    scope.launch { snackbarHostState.showSnackbar("Daily quest saved.") }
-                                },
-                                onDeleteDaily = { id ->
-                                    if (!customMode) {
-                                        scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
-                                        return@QuestsScreen
-                                    }
-                                    val list = customTemplates.filterNot { it.id == id }
-                                    persistCustomTemplates(list)
-                                    scope.launch { snackbarHostState.showSnackbar("Daily quest deleted.") }
-                                },
-                                onUpsertMain = { mq ->
-                                    if (!customMode) {
-                                        scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
-                                        return@QuestsScreen
-                                    }
-                                    val list = mainQuests.toMutableList()
-                                    val idx = list.indexOfFirst { it.id == mq.id }
-                                    if (idx >= 0) list[idx] = mq else list.add(mq)
-                                    persistMainQuests(list)
-                                    scope.launch { snackbarHostState.showSnackbar("Main quest saved.") }
-                                },
-                                onDeleteMain = { id ->
-                                    if (!customMode) {
-                                        scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
-                                        return@QuestsScreen
-                                    }
-                                    val list = mainQuests.filterNot { it.id == id }
-                                    persistMainQuests(list)
-                                    scope.launch { snackbarHostState.showSnackbar("Main quest deleted.") }
-                                },
-                                onRestoreDefaults = { restoreDefaultQuests() },
-                                onExportTemplate = { templateName ->
-                                    val template = GameTemplate(
-                                        templateName,
-                                        appTheme,
-                                        customTemplatesToQuestTemplates(customTemplates),
-                                        mainQuests,
-                                        shopItems,
-                                        templateSettings = currentTemplateSettings(),
-                                        accentArgb = accent.toArgbCompat().toLong()
-                                    )
-                                    val compressedPayload = exportGameTemplate(template)
-                                    val link = "https://qn8r.github.io/Questify/?data=$compressedPayload"
-                                    val sendIntent = Intent().apply { action = Intent.ACTION_SEND; putExtra(Intent.EXTRA_TEXT, "Check out my Questify Template: $templateName!\n\n$link"); type = "text/plain" }
-                                    appContext.startActivity(Intent.createChooser(sendIntent, "Share Template"))
-                                },
-                                onSaveCurrentToLibrary = { templateName ->
-                                    val template = GameTemplate(
-                                        templateName,
-                                        appTheme,
-                                        customTemplatesToQuestTemplates(customTemplates),
-                                        mainQuests,
-                                        shopItems,
-                                        templateSettings = currentTemplateSettings(),
-                                        accentArgb = accent.toArgbCompat().toLong()
-                                    )
-                                    persistSavedTemplates(savedTemplates + template)
-                                    scope.launch { snackbarHostState.showSnackbar("Template saved.") }
-                                },
-                                onApplySavedTemplate = { t, backupName, clearExisting -> // UPDATED: Added clearExisting
-                                    val safeTemplate = runCatching { normalizeGameTemplateSafe(t) }.getOrElse {
-                                        scope.launch { snackbarHostState.showSnackbar("Template is incompatible. Re-export it from latest app version.") }
-                                        return@QuestsScreen
-                                    }
-                                    if (!backupName.isNullOrBlank()) {
-                                        val backup = GameTemplate(
-                                            backupName,
-                                            appTheme,
-                                            customTemplatesToQuestTemplates(customTemplates),
-                                            mainQuests,
-                                            shopItems,
-                                            templateSettings = currentTemplateSettings(),
-                                            accentArgb = accent.toArgbCompat().toLong()
-                                        )
-                                        persistSavedTemplates(savedTemplates + backup)
-                                    }
-                                    appTheme = normalizeTheme(safeTemplate.appTheme)
-                                    accent = safeTemplate.accentArgb?.let { Color(it.toInt()) } ?: fallbackAccentForTheme(appTheme)
-                                    applyTemplateSettings(safeTemplate.templateSettings)
-                                    persistSettings()
-
-                                    val mappedDailies = safeTemplate.dailyQuests.map { qt ->
-                                        CustomTemplate(
-                                            id = UUID.randomUUID().toString(),
-                                            category = qt.category,
-                                            difficulty = qt.difficulty,
-                                            title = qt.title,
-                                            icon = qt.icon,
-                                            xp = qt.xp,
-                                            target = qt.target,
-                                            isPinned = qt.isPinned,
-                                            imageUri = qt.imageUri,
-                                            packageId = safeTemplate.packageId,
-                                            objectiveType = qt.objectiveType,
-                                            targetSeconds = qt.targetSeconds,
-                                            healthMetric = qt.healthMetric,
-                                            healthAggregation = qt.healthAggregation
-                                        )
-                                    }
-
-                                    if (clearExisting) {
-                                        persistCustomTemplates(mappedDailies)
-                                        persistMainQuests(safeTemplate.mainQuests)
-                                        persistShopItems(safeTemplate.shopItems)
-                                        activePackageIds = setOf(safeTemplate.packageId)
-                                        applyTemplateDailyQuestDefaults(safeTemplate.packageId, clearExisting = true)
-                                        persistSettings()
-                                    } else {
-                                        val newCustoms = customTemplates + mappedDailies
-                                        persistCustomTemplates(newCustoms.distinctBy { it.title })
-                                        val newMqs = mainQuests + safeTemplate.mainQuests
-                                        persistMainQuests(newMqs.distinctBy { it.title })
-                                        if (safeTemplate.shopItems.isNotEmpty()) {
-                                            val mergedShop = (shopItems + safeTemplate.shopItems).distinctBy { it.id }
-                                            persistShopItems(mergedShop)
-                                        }
-                                        activePackageIds = activePackageIds + safeTemplate.packageId
-                                    }
-                                    scope.launch { appContext.dataStore.edit { p -> p[activePacksKey] = activePackageIds.joinToString(",") } }
-                                    scope.launch { snackbarHostState.showSnackbar("Theme & Quests Applied!") }
-                                },
-                                onDeleteSavedTemplate = { t ->
-                                    persistSavedTemplates(savedTemplates.filterNot { it == t })
-                                    scope.launch {
-                                        val res = snackbarHostState.showSnackbar("Template deleted.", actionLabel = "UNDO", duration = SnackbarDuration.Short)
-                                        if (res == SnackbarResult.ActionPerformed) {
-                                            persistSavedTemplates((savedTemplates + t).distinctBy { "${it.packageId}|${it.templateName}" })
-                                        }
-                                    }
-                                },
-                                onRequireCustomMode = {
-                                    scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings to add quests.") }
-                                },
-                                onOpenCommunityTemplates = { screen = Screen.COMMUNITY },
-                                onOpenAdvancedTemplates = {
-                                    settingsExpandedSection = "advanced_templates"
-                                    screen = Screen.SETTINGS
-                                },
-                                showTutorial = !questsTutorialSeen,
-                                onTutorialDismiss = { markQuestsTutorialSeen() },
-                                initialTab = questsPreferredTab,
-                                onOpenDrawer = { scope.launch { drawerState.open() } },
-                                onOpenSettings = { screen = Screen.SETTINGS }
-                            )
+                            Screen.QUESTS -> questsScreenContent()
                             Screen.STATS -> DashboardScreen( // Pointing to the new screen!
                                 modifier = Modifier.fillMaxSize().padding(padding),
                                 levelInfo = calculateLevel(totalXp),
@@ -3530,194 +4132,7 @@ Final output:
                                 onOpenDrawer = { scope.launch { drawerState.open() } },
                                 onOpenSettings = { screen = Screen.SETTINGS }
                             )
-                            Screen.SETTINGS -> SettingsScreen(
-                                modifier = Modifier.fillMaxSize().padding(padding),
-                                autoNewDay = autoNewDay,
-                                confirmComplete = confirmComplete,
-                                refreshIncompleteOnly = refreshIncompleteOnly,
-                                customMode = customMode,
-                                advancedOptions = advancedOptions,
-                                highContrastText = highContrastText,
-                                compactMode = compactMode,
-                                largerTouchTargets = largerTouchTargets,
-                                reduceAnimations = reduceAnimations,
-                                decorativeBorders = neonFlowEnabled,
-                                neonLightBoost = neonLightBoost,
-                                neonFlowEnabled = neonFlowEnabled,
-                                neonFlowSpeed = neonFlowSpeed,
-                                neonGlowPalette = neonGlowPalette,
-                                alwaysShowQuestProgress = alwaysShowQuestProgress,
-                                hideCompletedQuests = hideCompletedQuests,
-                                confirmDestructiveActions = confirmDestructiveActions,
-                                dailyResetHour = dailyResetHour,
-                                dailyQuestTarget = dailyQuestTarget,
-                                expandedSection = settingsExpandedSection,
-                                premiumUnlocked = premiumUnlocked,
-                                cloudSyncEnabled = cloudSyncEnabled,
-                                cloudConnected = cloudConnectedAccount != null,
-                                cloudAccountEmail = cloudAccountEmail,
-                                cloudLastSyncAt = cloudLastSyncAt,
-                                dailyRemindersEnabled = dailyRemindersEnabled,
-                                hapticsEnabled = hapticsEnabled,
-                                soundEffectsEnabled = soundEffectsEnabled,
-                                fontStyle = fontStyle,
-                                fontScalePercent = fontScalePercent,
-                                appLanguage = appLanguage,
-                                backgroundImageTransparencyPercent = backgroundImageTransparencyPercent,
-                                journalName = journalName,
-                                textColorOverride = textColorOverride,
-                                appBackgroundColorOverride = appBackgroundColorOverride,
-                                chromeBackgroundColorOverride = chromeBackgroundColorOverride,
-                                cardColorOverride = cardColorOverride,
-                                buttonColorOverride = buttonColorOverride,
-                                journalPageColorOverride = journalPageColorOverride,
-                                journalAccentColorOverride = journalAccentColorOverride,
-                                appTheme = appTheme,
-                                accentStrong = accentStrong,
-                                accentSoft = accentSoft,
-                                onAutoNewDayChanged = { autoNewDay = it; persistSettings() },
-                                onConfirmCompleteChanged = { confirmComplete = it; persistSettings() },
-                                onRefreshIncompleteOnlyChanged = { refreshIncompleteOnly = it; persistSettings() },
-                                onCustomModeChanged = { customMode = it; persistSettings() },
-                                onAdvancedOptionsChanged = { advancedOptions = it; persistSettings() },
-                                onHighContrastTextChanged = { highContrastText = it; persistSettings() },
-                                onCompactModeChanged = { compactMode = it; persistSettings() },
-                                onLargeTouchTargetsChanged = { largerTouchTargets = it; persistSettings() },
-                                onReduceAnimationsChanged = { reduceAnimations = it; persistSettings() },
-                                onDecorativeBordersChanged = {
-                                    decorativeBorders = it
-                                    neonFlowEnabled = it
-                                    persistSettings()
-                                },
-                                onNeonLightBoostChanged = { neonLightBoost = it; persistSettings() },
-                                onNeonFlowEnabledChanged = {
-                                    neonFlowEnabled = it
-                                    decorativeBorders = it
-                                    persistSettings()
-                                },
-                                onNeonFlowSpeedChanged = { neonFlowSpeed = it.coerceIn(0, 2); persistSettings() },
-                                onNeonGlowPaletteChanged = { neonGlowPalette = it.ifBlank { "magenta" }; persistSettings() },
-                                onAlwaysShowQuestProgressChanged = { alwaysShowQuestProgress = it; persistSettings() },
-                                onHideCompletedQuestsChanged = { hideCompletedQuests = it; persistSettings() },
-                                onConfirmDestructiveChanged = { confirmDestructiveActions = it; persistSettings() },
-                                onDailyResetHourChanged = { dailyResetHour = it.coerceIn(0, 23); persistSettings() },
-                                onDailyQuestTargetChanged = { dailyQuestTarget = it.coerceIn(3, 10); persistSettings(); regenerateForDay(currentEpochDay()) },
-                                onExpandedSectionChanged = { settingsExpandedSection = it },
-                                onPremiumUnlockedChanged = { premiumUnlocked = it; persistSettings() },
-                                onCloudSyncEnabledChanged = { cloudSyncEnabled = it; persistSettings() },
-                                onCloudEmailChanged = { cloudAccountEmail = it.take(60); persistSettings() },
-                                onDailyRemindersEnabledChanged = { dailyRemindersEnabled = it; persistSettings() },
-                                onHapticsChanged = { hapticsEnabled = it; persistSettings() },
-                                onSoundEffectsChanged = { soundEffectsEnabled = it; persistSettings() },
-                                onFontStyleChanged = { fontStyle = it; persistSettings() },
-                                onFontScalePercentChanged = { fontScalePercent = it.coerceIn(80, 125); persistSettings() },
-                                onAppLanguageChanged = { lang ->
-                                    appLanguage = lang
-                                    appContext.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
-                                        .edit().putString("selected_language", lang).commit()
-                                    scope.launch {
-                                        appContext.dataStore.edit { p -> p[Keys.APP_LANGUAGE] = lang }
-                                        (appContext as android.app.Activity).recreate()
-                                    }
-                                },
-                                onJournalNameChanged = { journalName = it.take(24).ifBlank { "Journal" }; persistSettings() },
-                                onTextColorChanged = { textColorOverride = it; persistSettings() },
-                                backgroundImageUri = backgroundImageUri,
-                                onBackgroundImageChanged = {
-                                    backgroundImageUri = it
-                                    persistSettings()
-                                },
-                                onBackgroundImageTransparencyPercentChanged = {
-                                    backgroundImageTransparencyPercent = it.coerceIn(0, 100)
-                                    persistSettings()
-                                },
-                                onAppBackgroundColorChanged = { appBackgroundColorOverride = it; persistSettings() },
-                                onChromeBackgroundColorChanged = { chromeBackgroundColorOverride = it; persistSettings() },
-                                onCardColorChanged = { cardColorOverride = it; persistSettings() },
-                                onButtonColorChanged = { buttonColorOverride = it; persistSettings() },
-                                onJournalPageColorChanged = { journalPageColorOverride = it; persistSettings() },
-                                onJournalAccentColorChanged = { journalAccentColorOverride = it; persistSettings() },
-                                onThemeChanged = {
-                                    appTheme = normalizeTheme(it)
-                                    if (buttonColorOverride == null) {
-                                        accent = fallbackAccentForTheme(appTheme)
-                                    }
-                                    persistSettings()
-                                },
-                                onAccentChanged = {
-                                    accent = it
-                                    buttonColorOverride = null
-                                    persistSettings()
-                                },
-                                onExportBackup = {
-                                    val blob = exportBackupPayload()
-                                    if (blob.isBlank()) {
-                                        scope.launch { snackbarHostState.showSnackbar("Backup export failed.") }
-                                    } else {
-                                        val sendIntent = Intent().apply {
-                                            action = Intent.ACTION_SEND
-                                            putExtra(Intent.EXTRA_TEXT, blob)
-                                            type = "text/plain"
-                                        }
-                                        appContext.startActivity(Intent.createChooser(sendIntent, "Export Encrypted Backup"))
-                                    }
-                                },
-                                onImportBackup = {
-                                    showBackupImport = true
-                                },
-                                onCloudSyncNow = { triggerCloudSnapshotSync(force = true) },
-                                onCloudRestore = { restoreFromCloud() },
-                                onCloudConnectRequest = {
-                                    googleSignInLauncher.launch(GoogleDriveSync.signInClient(appContext).signInIntent)
-                                },
-                                onCloudDisconnect = { disconnectCloudAccount() },
-                                onSendFeedback = { category, text -> shareFeedbackReport(category, text) },
-                                onExportLogs = {
-                                    val sendIntent = Intent().apply {
-                                        action = Intent.ACTION_SEND
-                                        putExtra(Intent.EXTRA_TEXT, AppLog.exportRecentLogs().ifBlank { "No logs captured." })
-                                        type = "text/plain"
-                                    }
-                                    appContext.startActivity(Intent.createChooser(sendIntent, "Export Logs"))
-                                },
-                                onBuildAdvancedTemplateStarterJson = { buildAdvancedTemplateStarterJson() },
-                                onBuildAdvancedTemplatePromptFromRequest = { request ->
-                                    buildAdvancedTemplatePromptFromRequest(request)
-                                },
-                                onImportAdvancedTemplateJson = { json ->
-                                    val result = importAdvancedTemplateJson(json)
-                                    if (result.success) {
-                                        scope.launch {
-                                            snackbarHostState.showSnackbar("Template imported: ${result.dailyAdded} daily, ${result.mainAdded} main.")
-                                        }
-                                    }
-                                    result
-                                },
-                                onApplyAdvancedTemplateByPackage = { pkg ->
-                                    val ok = applyAdvancedImportedTemplate(pkg)
-                                    if (ok) {
-                                        scope.launch { snackbarHostState.showSnackbar("Advanced template applied.") }
-                                    }
-                                    ok
-                                },
-                                onRequestResetAll = {
-                                    if (confirmDestructiveActions) {
-                                        resetBackupBefore = false
-                                        resetBackupName = "Pre-reset backup"
-                                        showResetAll = true
-                                    } else {
-                                        resetAll(saveBackup = false)
-                                    }
-                                },
-                                onRequestForceNewDay = {
-                                    if (confirmDestructiveActions) {
-                                        showRefreshDayConfirm = true
-                                    } else {
-                                        onRefreshDay()
-                                    }
-                                },
-                                onOpenDrawer = { scope.launch { drawerState.open() } }
-                            )
+                            Screen.SETTINGS -> settingsScreenContent()
                             Screen.ABOUT -> AboutScreen(
                                 Modifier.fillMaxSize().padding(padding),
                                 accentStrong,

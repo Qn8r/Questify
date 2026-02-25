@@ -59,6 +59,16 @@ object ThemeRuntime {
     var fontScalePercent by mutableIntStateOf(100)
     var textColorOverride by mutableStateOf<Color?>(null)
     var cardColorOverride by mutableStateOf<Color?>(null)
+    var accentTransparencyPercent by mutableIntStateOf(0)
+    var textTransparencyPercent by mutableIntStateOf(0)
+    var appBgTransparencyPercent by mutableIntStateOf(0)
+    var chromeBgTransparencyPercent by mutableIntStateOf(0)
+    var cardBgTransparencyPercent by mutableIntStateOf(0)
+    var journalPageTransparencyPercent by mutableIntStateOf(0)
+    var journalAccentTransparencyPercent by mutableIntStateOf(0)
+    var buttonTransparencyPercent by mutableIntStateOf(0)
+    var settingsThemeLabExpanded by mutableStateOf(false)
+    var settingsThemePresetIndex by mutableIntStateOf(-1)
 }
 
 fun neonPaletteColor(key: String, boosted: Boolean): Color {
@@ -80,26 +90,42 @@ val AccentYellow      = Color(0xFFFFD54A)
 val AccentBurntOrange = Color(0xFF4C8ED9)
 val DarkBackground    = Color(0xFF0C1118)
 
+private fun applyTransparencyPercent(color: Color, transparencyPercent: Int): Color {
+    val alpha = (1f - (transparencyPercent.coerceIn(0, 100) / 100f)).coerceIn(0f, 1f)
+    return color.copy(alpha = alpha)
+}
+
+fun Color.scaleAlpha(multiplier: Float): Color {
+    val m = multiplier.coerceIn(0f, 1f)
+    return copy(alpha = (alpha * m).coerceIn(0f, 1f))
+}
+
 val CardDarkBlue: Color
-    get() = when {
+    get() = applyTransparencyPercent(
+        when {
         ThemeRuntime.cardColorOverride != null -> ThemeRuntime.cardColorOverride!!
         ThemeRuntime.currentTheme.isLightCategory() -> Color(0xFFFFFFFF)
         ThemeRuntime.currentTheme == AppTheme.CYBERPUNK && ThemeRuntime.neonLightBoostEnabled -> Color(0xFF19204A)
         ThemeRuntime.currentTheme == AppTheme.CYBERPUNK -> Color(0xFF141938)
         else -> Color(0xFF121925)
-    }
+    },
+        ThemeRuntime.cardBgTransparencyPercent
+    )
 
 val AvatarBackground: Color
-    get() = when {
+    get() = applyTransparencyPercent(
+        when {
         ThemeRuntime.currentTheme.isLightCategory() -> Color(0xFFE7ECF2)
         ThemeRuntime.currentTheme == AppTheme.CYBERPUNK && ThemeRuntime.neonLightBoostEnabled -> Color(0xFF21295A)
         ThemeRuntime.currentTheme == AppTheme.CYBERPUNK -> Color(0xFF1B2047)
         else -> Color(0xFF1C2634)
-    }
+    },
+        ThemeRuntime.cardBgTransparencyPercent
+    )
 
-val OnCardText: Color
-    get() = when {
-        ThemeRuntime.textColorOverride != null -> ThemeRuntime.textColorOverride!!
+private fun baseOnCardText(): Color {
+    return when {
+        ThemeRuntime.textColorOverride != null -> ThemeRuntime.textColorOverride!!.copy(alpha = 1f)
         ThemeRuntime.currentTheme.isLightCategory() && ThemeRuntime.highContrastTextEnabled -> Color(0xFF0D1520)
         ThemeRuntime.currentTheme.isLightCategory() -> Color(0xFF1B2430)
         ThemeRuntime.currentTheme == AppTheme.CYBERPUNK && ThemeRuntime.highContrastTextEnabled -> Color(0xFFFFFFFF)
@@ -107,6 +133,13 @@ val OnCardText: Color
         ThemeRuntime.highContrastTextEnabled -> Color(0xFFFFFFFF)
         else -> Color(0xFFE8EAF0)
     }
+}
+
+val OnCardText: Color
+    get() = applyTransparencyPercent(baseOnCardText(), ThemeRuntime.textTransparencyPercent)
+
+val OnCardIcon: Color
+    get() = baseOnCardText()
 
 val ProgressTrack: Color
     get() = when {
