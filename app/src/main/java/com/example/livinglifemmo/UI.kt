@@ -153,6 +153,15 @@ fun ScalableScreen(modifier: Modifier = Modifier, content: @Composable (Float) -
 val LocalHeaderThemeToggle = staticCompositionLocalOf<(() -> Unit)?> { null }
 
 @Composable
+private fun questCategoryLabel(cat: QuestCategory): String = when (cat) {
+    QuestCategory.FITNESS -> stringResource(R.string.cat_fitness)
+    QuestCategory.STUDY -> stringResource(R.string.cat_study)
+    QuestCategory.HYDRATION -> stringResource(R.string.cat_hydration)
+    QuestCategory.DISCIPLINE -> stringResource(R.string.cat_discipline)
+    QuestCategory.MIND -> stringResource(R.string.cat_mind)
+}
+
+@Composable
 fun ScalableHeader(
     title: String,
     uiScale: Float,
@@ -344,6 +353,7 @@ fun HomeScreen(
     onTimerTick: (Int, Int) -> Unit,
     onTimerComplete: (Int, Int) -> Unit,
     onTimerPause: () -> Unit,
+    onHealthSnapshotSync: (HealthDailySnapshot, Int?) -> Unit,
     onResetQuestProgress: (Int) -> Unit,
     onRemoveQuest: (Int) -> Unit,
     onOpenQuestEditor: (Int) -> Unit,
@@ -356,11 +366,109 @@ fun HomeScreen(
     var showNameEditor by rememberSaveable { mutableStateOf(false) }
     var questOptionsQuestId by rememberSaveable { mutableStateOf<Int?>(null) }
     var pendingQuestRemoveId by rememberSaveable { mutableStateOf<Int?>(null) }
+    var pendingHealthQuestId by rememberSaveable { mutableStateOf<Int?>(null) }
     var nameDraft by remember(playerName) { mutableStateOf(playerName) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { picked ->
         if (picked != null) {
             runCatching { appContext.contentResolver.takePersistableUriPermission(picked, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             onChangeAvatar(Avatar.Custom(picked))
+        }
+    }
+    val healthPermissions = remember {
+        setOf(
+            HealthPermission.getReadPermission(StepsRecord::class),
+            HealthPermission.getReadPermission(HeartRateRecord::class),
+            HealthPermission.getReadPermission(DistanceRecord::class),
+            HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
+        )
+    }
+    var pendingHealthPermissions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val healthSyncSyncedLabel = stringResource(R.string.health_sync_synced)
+    val healthSyncFailedLabel = stringResource(R.string.health_sync_failed)
+    val healthPermissionDeniedLabel = stringResource(R.string.health_permission_denied)
+    val healthInstallUpdateLabel = stringResource(R.string.health_install_update)
+    val healthNotSupportedLabel = stringResource(R.string.health_not_supported)
+    val healthScope = rememberCoroutineScope()
+    fun metricPermissions(metric: String?): Set<String> {
+        return HealthConnectReader.readPermissionForMetric(metric)?.let { setOf(it) } ?: emptySet()
+    }
+    fun runHealthConnectSyncFromQuest(
+        requiredPermissions: Set<String>,
+        grantedOverride: Set<String>? = null,
+        startedQuestId: Int? = null
+    ) {
+        healthScope.launch {
+            runCatching {
+                val granted = if (!grantedOverride.isNullOrEmpty()) {
+                    grantedOverride
+                } else {
+                    val hcClient = androidx.health.connect.client.HealthConnectClient.getOrCreate(appContext)
+                    hcClient.permissionController.getGrantedPermissions()
+                }
+                if (requiredPermissions.isNotEmpty() && !granted.containsAll(requiredPermissions)) {
+                    AppLog.w("health_permission_denied_home missing=${(requiredPermissions - granted).joinToString(",")}")
+                    Toast.makeText(appContext, healthPermissionDeniedLabel, Toast.LENGTH_SHORT).show()
+                    return@runCatching
+                }
+                val snapshot = HealthConnectReader.readTodaySnapshot(appContext, granted)
+                onHealthSnapshotSync(snapshot, startedQuestId)
+                Toast.makeText(appContext, healthSyncSyncedLabel, Toast.LENGTH_SHORT).show()
+                AppLog.event("health_sync_home_success", "steps=${snapshot.steps},dist=${snapshot.distanceMeters.toInt()},kcal=${snapshot.caloriesKcal.toInt()}")
+            }.onFailure {
+                AppLog.w("health_sync_home_failed", it)
+                Toast.makeText(appContext, healthSyncFailedLabel, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+    val healthPermissionLauncher = rememberLauncherForActivityResult(
+        PermissionController.createRequestPermissionResultContract()
+    ) { grantedAfterRequest ->
+        AppLog.event("health_permission_result_home", "granted=${grantedAfterRequest.joinToString(",")}")
+        runHealthConnectSyncFromQuest(pendingHealthPermissions, grantedAfterRequest, pendingHealthQuestId)
+    }
+    fun onHealthQuestStartRequested(questId: Int, metric: String?) {
+        val requiredPermissions = metricPermissions(metric)
+        if (requiredPermissions.isEmpty()) {
+            AppLog.w("health_metric_invalid_home metric=$metric")
+            Toast.makeText(appContext, healthSyncFailedLabel, Toast.LENGTH_SHORT).show()
+            return
+        }
+        pendingHealthPermissions = requiredPermissions
+        pendingHealthQuestId = questId
+        val status = HealthConnectReader.sdkStatus(appContext)
+        AppLog.event("health_status_home", "status=$status metric=$metric")
+        when (status) {
+            HealthConnectReader.STATUS_AVAILABLE -> {
+                healthScope.launch {
+                    runCatching {
+                        val hcClient = androidx.health.connect.client.HealthConnectClient.getOrCreate(appContext)
+                        val granted = hcClient.permissionController.getGrantedPermissions()
+                        val missing = requiredPermissions - granted
+                        AppLog.event(
+                            "health_permission_check_home",
+                            "required=${requiredPermissions.joinToString(",")};granted=${granted.joinToString(",")};missing=${missing.joinToString(",")}"
+                        )
+                        if (missing.isEmpty()) {
+                            runHealthConnectSyncFromQuest(requiredPermissions, granted, questId)
+                        } else {
+                            healthPermissionLauncher.launch(missing)
+                        }
+                    }.onFailure {
+                        AppLog.w("health_permission_check_failed", it)
+                        Toast.makeText(appContext, healthSyncFailedLabel, Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            HealthConnectReader.STATUS_NEEDS_INSTALL -> {
+                Toast.makeText(appContext, healthInstallUpdateLabel, Toast.LENGTH_LONG).show()
+                runCatching {
+                    val i = Intent(Intent.ACTION_VIEW, "market://details?id=com.google.android.apps.healthdata".toUri())
+                    appContext.startActivity(i)
+                }.onFailure { AppLog.w("health_market_open_failed", it) }
+            }
+            else -> {
+                Toast.makeText(appContext, healthNotSupportedLabel, Toast.LENGTH_LONG).show()
+            }
         }
     }
 
@@ -625,7 +733,7 @@ fun HomeScreen(
 
 // 5. Quest List
             val questListState = rememberLazyListState()
-            key(refreshCount, quests) {
+            key(refreshCount) {
                 LazyColumn(
                     state = questListState,
                     modifier = Modifier.weight(1f).fillMaxWidth().padding(horizontal = 16.dp),
@@ -647,7 +755,7 @@ fun HomeScreen(
                             }
                         }
                     } else {
-                        items(quests) { q ->
+                        itemsIndexed(items = quests, key = { index, q -> "${q.id}_$index" }) { _, q ->
                             val questRowInteraction = remember { MutableInteractionSource() }
                             val questRowPressed by questRowInteraction.collectIsPressedAsState()
                             val questHoldPulse by rememberInfiniteTransition(label = "home_quest_hold_pulse").animateFloat(
@@ -676,6 +784,7 @@ fun HomeScreen(
                                         },
                                         onClick = {
                                             if (!q.completed) {
+                                                if (q.objectiveType != QuestObjectiveType.COUNT) return@combinedClickable
                                                 val target = q.target
                                                 val current = q.currentProgress
                                                 when {
@@ -692,7 +801,8 @@ fun HomeScreen(
                                 onProgress = { p -> onProgress(q.id, p) },
                                 onTimerTick = { p -> onTimerTick(q.id, p) },
                                 onTimerComplete = { p -> onTimerComplete(q.id, p) },
-                                onTimerPause = onTimerPause
+                                onTimerPause = onTimerPause,
+                                onHealthQuestStart = { questId, metric -> onHealthQuestStartRequested(questId, metric) }
                             )
                         }
                     }
@@ -2167,7 +2277,7 @@ fun StatsScreen(modifier: Modifier, levelInfo: LevelInfo, attributes: PlayerAttr
             ScalableHeader(title = stringResource(R.string.title_stats), uiScale = uiScale, onOpenDrawer = onOpenDrawer)
             Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp * uiScale)) {
                 CardBlock { Text(stringResource(R.string.level), color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Text(stringResource(R.string.level_label, levelInfo.level), color = accentStrong, fontSize = 26.sp, fontWeight = FontWeight.ExtraBold); Spacer(Modifier.height(8.dp)); XpBar(levelInfo = levelInfo, accentStrong = accentStrong) }
-                CardBlock { Text(stringResource(R.string.attributes), color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Spacer(Modifier.height(8.dp)); AttributeRow("Strength", attributes.str); AttributeRow("Intellect", attributes.int); AttributeRow("Vitality", attributes.vit); AttributeRow("Endurance", attributes.end); AttributeRow("Faith", attributes.fth) }
+                CardBlock { Text(stringResource(R.string.attributes), color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Spacer(Modifier.height(8.dp)); AttributeRow(stringResource(R.string.strength), attributes.str); AttributeRow(stringResource(R.string.intellect), attributes.int); AttributeRow(stringResource(R.string.vitality), attributes.vit); AttributeRow(stringResource(R.string.endurance), attributes.end); AttributeRow(stringResource(R.string.faith), attributes.fth) }
                 CardBlock { Text(stringResource(R.string.last_7_days), color = OnCardText.copy(alpha = 0.85f), fontSize = 12.sp); Spacer(Modifier.height(8.dp)); Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) { repeat(7) { idx -> val item = last7.getOrNull(idx); val ok = item?.second?.allDone == true; Box(modifier = Modifier.size(18.dp).clip(RoundedCornerShape(6.dp)).background(if (ok) accentSoft else ProgressTrack)) }; Spacer(Modifier.width(8.dp)); Text(stringResource(R.string.value_percent, completionRate), color = accentStrong, fontWeight = FontWeight.Bold) } }
             }
         }
@@ -2201,12 +2311,34 @@ fun CalendarScreen(
     var planMinute by rememberSaveable { mutableIntStateOf(0) }
     var planNoteDraft by rememberSaveable { mutableStateOf("") }
     var planTypeExpanded by rememberSaveable { mutableStateOf(false) }
-    var selectedPlanType by rememberSaveable { mutableStateOf("General") }
+    val planTypeGeneral = stringResource(R.string.plan_type_general)
+    val planTypeWorkout = stringResource(R.string.plan_type_workout)
+    val planTypeDeepWork = stringResource(R.string.plan_type_deep_work)
+    val planTypeHydrate = stringResource(R.string.plan_type_hydrate)
+    val planTypeSleep = stringResource(R.string.plan_type_sleep)
+    val planTypeStudy = stringResource(R.string.plan_type_study)
+    var selectedPlanType by rememberSaveable { mutableStateOf(planTypeGeneral) }
     var planSoundEnabled by rememberSaveable { mutableStateOf(true) }
     var planVibrationEnabled by rememberSaveable { mutableStateOf(true) }
     var planSnoozeEnabled by rememberSaveable { mutableStateOf(false) }
     var planReminderMinutes by rememberSaveable { mutableIntStateOf(0) }
-    val planTypes = remember { listOf("General", "Workout", "Deep Work", "Hydrate", "Sleep", "Study") }
+    val planTypes = remember(
+        planTypeGeneral,
+        planTypeWorkout,
+        planTypeDeepWork,
+        planTypeHydrate,
+        planTypeSleep,
+        planTypeStudy
+    ) {
+        listOf(
+            planTypeGeneral,
+            planTypeWorkout,
+            planTypeDeepWork,
+            planTypeHydrate,
+            planTypeSleep,
+            planTypeStudy
+        )
+    }
     val reminderChoices = remember { listOf(0, 5, 10, 15, 30, 60) }
     val reminderIndex = reminderChoices.indexOf(planReminderMinutes).let { if (it < 0) 0 else it }
     val planSummaryReminder = stringResource(R.string.plan_summary_reminder)
@@ -2214,14 +2346,15 @@ fun CalendarScreen(
     val planSummarySilent = stringResource(R.string.plan_summary_silent)
     val planSummaryVibrate = stringResource(R.string.plan_summary_vibrate)
     val planSummarySnooze = stringResource(R.string.plan_summary_snooze)
+    val planTimeFormatter = remember { java.text.SimpleDateFormat("h:mm a", java.util.Locale.getDefault()) }
     val formattedPlanTime = remember(planHour, planMinute) {
-        val amPm = if (planHour >= 12) "PM" else "AM"
-        val hour12 = when {
-            planHour == 0 -> 12
-            planHour > 12 -> planHour - 12
-            else -> planHour
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, planHour)
+            set(java.util.Calendar.MINUTE, planMinute)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
         }
-        String.format(java.util.Locale.getDefault(), "%d:%02d %s", hour12, planMinute, amPm)
+        planTimeFormatter.format(cal.time)
     }
     fun shiftPlanTime(stepMinutes: Int) {
         val totalMinutesInDay = 24 * 60
@@ -2407,7 +2540,7 @@ fun CalendarScreen(
                         modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
                     )
                     OutlinedArrowControlField(
-                        label = "Time",
+                        label = stringResource(R.string.time_label),
                         valueLabel = formattedPlanTime,
                         onPrev = { shiftPlanTime(-5) },
                         onNext = { shiftPlanTime(5) },
@@ -2481,7 +2614,7 @@ fun CalendarScreen(
                         Text(stringResource(R.string.l10n_snooze), color = OnCardText.copy(alpha = 0.85f), modifier = Modifier.weight(1f), fontSize = 12.sp)
                     }
                     OutlinedArrowControlField(
-                        label = "Reminder",
+                        label = stringResource(R.string.reminder_label),
                         valueLabel = if (planReminderMinutes == 0) stringResource(R.string.off_label) else stringResource(R.string.reminder_m_before, planReminderMinutes),
                         onPrev = {
                             val next = (reminderIndex - 1).coerceAtLeast(0)
@@ -2771,14 +2904,33 @@ fun SettingsScreen(
         var performanceWarningMessage by rememberSaveable { mutableStateOf<String?>(null) }
         var showFeedbackDialog by rememberSaveable { mutableStateOf(false) }
         var feedbackCategoryExpanded by rememberSaveable { mutableStateOf(false) }
-        var feedbackCategory by rememberSaveable { mutableStateOf("General") }
+        val feedbackBug = stringResource(R.string.feedback_bug)
+        val feedbackUiux = stringResource(R.string.feedback_uiux)
+        val feedbackFeatureRequest = stringResource(R.string.feedback_feature_request)
+        val feedbackPerformance = stringResource(R.string.feedback_performance)
+        val feedbackGeneral = stringResource(R.string.feedback_general)
+        var feedbackCategory by rememberSaveable { mutableStateOf(feedbackGeneral) }
         var feedbackMessage by rememberSaveable { mutableStateOf("") }
         var advancedTemplateJsonDraft by rememberSaveable { mutableStateOf("") }
         var advancedTemplateRequestDraft by rememberSaveable { mutableStateOf("") }
         var advancedTemplateGeneratedPrompt by rememberSaveable { mutableStateOf("") }
         var advancedTemplateAllowThemeGeneration by rememberSaveable { mutableStateOf(false) }
         var backgroundMode by rememberSaveable(backgroundImageUri) { mutableStateOf(if (backgroundImageUri.isNullOrBlank()) "color" else "image") }
-        val feedbackCategories = remember { listOf("Bug", "UI/UX", "Feature Request", "Performance", "General") }
+        val feedbackCategories = remember(
+            feedbackBug,
+            feedbackUiux,
+            feedbackFeatureRequest,
+            feedbackPerformance,
+            feedbackGeneral
+        ) {
+            listOf(
+                feedbackBug,
+                feedbackUiux,
+                feedbackFeatureRequest,
+                feedbackPerformance,
+                feedbackGeneral
+            )
+        }
         val tabGameplay = stringResource(R.string.tab_gameplay)
         val tabAppearance = stringResource(R.string.tab_appearance)
         val tabHub = stringResource(R.string.tab_hub)
@@ -4168,7 +4320,7 @@ fun SettingsScreen(
                         if (message.isNotBlank()) {
                             onSendFeedback(feedbackCategory, message)
                             feedbackMessage = ""
-                            feedbackCategory = "General"
+                            feedbackCategory = feedbackGeneral
                             showFeedbackDialog = false
                         }
                     }) { Text(stringResource(R.string.l10n_send), color = accentStrong, fontWeight = FontWeight.Bold) }
@@ -5153,7 +5305,7 @@ fun CommunityScreen(
                                     }
                                 } else {
                                     myPublishedPosts.forEach { post ->
-                                        val publishedLabel = runCatching { communityDateFormatter.format(java.util.Date(post.createdAtMillis)) }.getOrDefault("Unknown date")
+                                        val publishedLabel = runCatching { communityDateFormatter.format(java.util.Date(post.createdAtMillis)) }.getOrDefault(stringResource(R.string.community_unknown_date))
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -5423,10 +5575,11 @@ fun CommunityPostCard(
 ) {
     var showModerationMenu by remember { mutableStateOf(false) }
     val questCountLabel = "${post.template.dailyQuests.size} daily • ${post.template.mainQuests.size} main"
+    val communityUnknownDate = stringResource(R.string.community_unknown_date)
     val publishedLabel = remember(post.createdAtMillis) {
         runCatching {
             java.text.SimpleDateFormat("MMM d, yyyy", java.util.Locale.getDefault()).format(java.util.Date(post.createdAtMillis))
-        }.getOrDefault("Unknown date")
+        }.getOrDefault(communityUnknownDate)
     }
     val postNeonEnabled = ThemeRuntime.neonFlowEnabled || ThemeRuntime.decorativeBordersEnabled
     val postBoostedNeon = ThemeRuntime.neonLightBoostEnabled
@@ -5434,9 +5587,9 @@ fun CommunityPostCard(
     val postNeonBrush = if (postNeonEnabled) rememberNeonBorderBrush(accentStrong, postNeonSecondary) else null
     val postCardShape = RoundedCornerShape(14.dp)
     val trustBadgeLabel = when (post.templateTrust) {
-        TemplateTrustLevel.VERIFIED_SAFE -> "Verified Safe"
-        TemplateTrustLevel.SANITIZED -> "Sanitized"
-        TemplateTrustLevel.FLAGGED -> "Flagged"
+        TemplateTrustLevel.VERIFIED_SAFE -> stringResource(R.string.community_trust_verified_safe)
+        TemplateTrustLevel.SANITIZED -> stringResource(R.string.community_trust_sanitized)
+        TemplateTrustLevel.FLAGGED -> stringResource(R.string.community_trust_flagged)
     }
     val trustBadgeColor = when (post.templateTrust) {
         TemplateTrustLevel.VERIFIED_SAFE -> Color(0xFF26A69A)
@@ -5455,10 +5608,10 @@ fun CommunityPostCard(
     ) {
         val trustScore = ((post.ratingAverage * post.ratingCount) + (post.remixCount * 2)).toInt()
         val trustLabel = when {
-            trustScore >= 80 -> "Legend"
-            trustScore >= 40 -> "Trusted"
-            trustScore >= 15 -> "Rising"
-            else -> "New"
+            trustScore >= 80 -> stringResource(R.string.community_rank_legend)
+            trustScore >= 40 -> stringResource(R.string.community_rank_trusted)
+            trustScore >= 15 -> stringResource(R.string.community_rank_rising)
+            else -> stringResource(R.string.community_rank_new)
         }
 
         Box {
@@ -5551,14 +5704,14 @@ fun CommunityPostCard(
                 modifier = Modifier.background(CardDarkBlue)
             ) {
                 DropdownMenuItem(
-                    text = { Text(if (isMuted) "Unmute creator" else "Mute creator", color = OnCardText) },
+                    text = { Text(if (isMuted) stringResource(R.string.community_unmute_creator) else stringResource(R.string.community_mute_creator), color = OnCardText) },
                     onClick = {
                         showModerationMenu = false
                         onToggleMute()
                     }
                 )
                 DropdownMenuItem(
-                    text = { Text(if (isBlocked) "Unblock creator" else "Block creator", color = OnCardText) },
+                    text = { Text(if (isBlocked) stringResource(R.string.community_unblock_creator) else stringResource(R.string.community_block_creator), color = OnCardText) },
                     onClick = {
                         showModerationMenu = false
                         onToggleBlock()
@@ -5585,7 +5738,7 @@ fun CommunityPostCard(
                     .padding(horizontal = 10.dp, vertical = 8.dp)
                 Box(modifier = detailSectionModifier) {
                     Text(
-                        "by ${post.authorName} • $publishedLabel • Trust: $trustLabel • Remixes ${post.remixCount}",
+                        stringResource(R.string.community_detail_line, post.authorName, publishedLabel, trustLabel, post.remixCount),
                         color = OnCardText.copy(alpha = 0.62f),
                         fontSize = 12.sp
                     )
@@ -5667,7 +5820,7 @@ fun CommunityPostCard(
                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
                         ) {
                             Text(
-                                if (isFollowing) "Following" else "Follow",
+                                if (isFollowing) stringResource(R.string.community_following) else stringResource(R.string.community_follow),
                                 color = if (isFollowing) accentSoft else accentStrong,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 13.sp
@@ -5788,17 +5941,20 @@ fun QuestsScreen(
     var showRestoreConfirm by remember { mutableStateOf(false) }
     var expandedDailyCategory by remember { mutableStateOf<QuestCategory?>(null) }
 
+    val templateDefaultName = stringResource(R.string.template_default_name)
+    val templateCurrentSetupName = stringResource(R.string.template_current_setup_name)
+    val backupDefaultName = stringResource(R.string.backup_default_name)
     var showExportNameDialog by remember { mutableStateOf(false) }
-    var exportName by remember { mutableStateOf("My Custom MMO") }
+    var exportName by remember { mutableStateOf(templateDefaultName) }
     var showSaveLibraryDialog by remember { mutableStateOf(false) }
-    var saveLibraryName by remember { mutableStateOf("My Current Setup") }
+    var saveLibraryName by remember { mutableStateOf(templateCurrentSetupName) }
 
     var templateToApply by remember { mutableStateOf<GameTemplate?>(null) }
     var backupBeforeApply by remember { mutableStateOf(true) }
     var clearExistingBeforeApply by remember { mutableStateOf(true) }
-    var backupName by remember { mutableStateOf("Backup") }
+    var backupName by remember { mutableStateOf(backupDefaultName) }
     var restoreBackupBeforeApply by remember { mutableStateOf(true) }
-    var restoreBackupName by remember { mutableStateOf("Backup") }
+    var restoreBackupName by remember { mutableStateOf(backupDefaultName) }
 
     var editingDaily by remember { mutableStateOf<CustomTemplate?>(null) }
     var editingMain by remember { mutableStateOf<CustomMainQuest?>(null) }
@@ -6061,6 +6217,25 @@ fun QuestsScreen(
                                         )
                                     }
                                 }
+                                item {
+                                    val featureTest = getQuestFeatureTestTemplate()
+                                    if (!hiddenTemplatePackageIds.contains(featureTest.packageId)) {
+                                        val isActive = activePackageIds.contains(featureTest.packageId)
+                                        TemplateLibraryCard(
+                                            featureTest,
+                                            isActive,
+                                            accentStrong,
+                                            accentSoft,
+                                            uiScale,
+                                            onToggle = { onTogglePackage(featureTest, it) },
+                                            onDelete = {
+                                                onTogglePackage(featureTest, false)
+                                                hiddenTemplatePackageIds = hiddenTemplatePackageIds + featureTest.packageId
+                                            },
+                                            isSystemTemplate = true
+                                        )
+                                    }
+                                }
                                 items(savedTemplates.filterNot { hiddenTemplatePackageIds.contains(it.packageId) }) { t ->
                                     val isActive = activePackageIds.contains(t.packageId)
                                     TemplateLibraryCard(
@@ -6253,11 +6428,11 @@ fun QuestsScreen(
 
     // --- DIALOGS ---
     if (showExportNameDialog) {
-        AlertDialog(onDismissRequest = { showExportNameDialog = false }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.share_template), color = accentStrong, fontWeight = FontWeight.Bold) }, text = { OutlinedTextField(value = exportName, onValueChange = { exportName = it }, label = { Text(stringResource(R.string.template_name_label), color = OnCardText.copy(alpha=0.6f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }, confirmButton = { Button(onClick = { onExportTemplate(exportName.ifBlank { "My Custom MMO" }); showExportNameDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.export_btn), color = Color.Black, fontWeight = FontWeight.Bold) } }, dismissButton = { TextButton(onClick = { showExportNameDialog = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } })
+        AlertDialog(onDismissRequest = { showExportNameDialog = false }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.share_template), color = accentStrong, fontWeight = FontWeight.Bold) }, text = { OutlinedTextField(value = exportName, onValueChange = { exportName = it }, label = { Text(stringResource(R.string.template_name_label), color = OnCardText.copy(alpha=0.6f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }, confirmButton = { Button(onClick = { onExportTemplate(exportName.ifBlank { templateDefaultName }); showExportNameDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.export_btn), color = Color.Black, fontWeight = FontWeight.Bold) } }, dismissButton = { TextButton(onClick = { showExportNameDialog = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } })
     }
 
     if (showSaveLibraryDialog) {
-        AlertDialog(onDismissRequest = { showSaveLibraryDialog = false }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.save_template_lib), color = accentStrong, fontWeight = FontWeight.Bold) }, text = { OutlinedTextField(value = saveLibraryName, onValueChange = { saveLibraryName = it }, label = { Text(stringResource(R.string.template_name_label), color = OnCardText.copy(alpha=0.6f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }, confirmButton = { Button(onClick = { onSaveCurrentToLibrary(saveLibraryName.ifBlank { "My Custom MMO" }); showSaveLibraryDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.save), color = Color.Black, fontWeight = FontWeight.Bold) } }, dismissButton = { TextButton(onClick = { showSaveLibraryDialog = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } })
+        AlertDialog(onDismissRequest = { showSaveLibraryDialog = false }, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.save_template_lib), color = accentStrong, fontWeight = FontWeight.Bold) }, text = { OutlinedTextField(value = saveLibraryName, onValueChange = { saveLibraryName = it }, label = { Text(stringResource(R.string.template_name_label), color = OnCardText.copy(alpha=0.6f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }, confirmButton = { Button(onClick = { onSaveCurrentToLibrary(saveLibraryName.ifBlank { templateDefaultName }); showSaveLibraryDialog = false }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.save), color = Color.Black, fontWeight = FontWeight.Bold) } }, dismissButton = { TextButton(onClick = { showSaveLibraryDialog = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } })
     }
 
     if (templateToApply != null) {
@@ -6283,7 +6458,7 @@ fun QuestsScreen(
                     if (backupBeforeApply) { OutlinedTextField(value = backupName, onValueChange = { backupName = it }, label = { Text(stringResource(R.string.backup_name_label), color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }
                 }
             },
-            confirmButton = { Button(onClick = { val finalBackupName = if (backupBeforeApply) backupName.ifBlank { "My Backup" } else null; onApplySavedTemplate(templateToApply!!, finalBackupName, clearExistingBeforeApply); templateToApply = null }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.equip_btn), color = Color.Black, fontWeight = FontWeight.Bold) } },
+            confirmButton = { Button(onClick = { val finalBackupName = if (backupBeforeApply) backupName.ifBlank { backupDefaultName } else null; onApplySavedTemplate(templateToApply!!, finalBackupName, clearExistingBeforeApply); templateToApply = null }, colors = ButtonDefaults.buttonColors(containerColor = accentStrong)) { Text(stringResource(R.string.equip_btn), color = Color.Black, fontWeight = FontWeight.Bold) } },
             dismissButton = { TextButton(onClick = { templateToApply = null }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
         )
     }
@@ -6326,7 +6501,7 @@ fun QuestsScreen(
                     if (restoreBackupBeforeApply) { OutlinedTextField(value = restoreBackupName, onValueChange = { restoreBackupName = it }, label = { Text(stringResource(R.string.backup_name_label), color = OnCardText.copy(alpha=0.5f)) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong)) }
                 }
             },
-            confirmButton = { TextButton(onClick = { if (restoreBackupBeforeApply) { onSaveCurrentToLibrary(restoreBackupName.ifBlank { "My Backup" }) }; onRestoreDefaults(); showRestoreConfirm = false }) { Text(stringResource(R.string.equip_btn), color = accentStrong) } },
+            confirmButton = { TextButton(onClick = { if (restoreBackupBeforeApply) { onSaveCurrentToLibrary(restoreBackupName.ifBlank { backupDefaultName }) }; onRestoreDefaults(); showRestoreConfirm = false }) { Text(stringResource(R.string.equip_btn), color = accentStrong) } },
             dismissButton = { TextButton(onClick = { showRestoreConfirm = false }) { Text(stringResource(R.string.cancel), color = OnCardText) } }
         )
     }
@@ -6588,6 +6763,7 @@ fun QuestCategoryHeader(
 ) {
     var expanded by remember { mutableStateOf(false) }
     var showDeleteCategoryDialog by remember { mutableStateOf(false) }
+    val categoryName = questCategoryLabel(cat)
     LaunchedEffect(externalExpand) {
         if (externalExpand) expanded = true
     }
@@ -6596,8 +6772,8 @@ fun QuestCategoryHeader(
     if (showDeleteCategoryDialog) {
         AlertDialog(
             onDismissRequest = { showDeleteCategoryDialog = false },
-            title = { Text(stringResource(R.string.delete_all_category_quests_title, cat.name), color = OnCardText) },
-            text = { Text(stringResource(R.string.delete_all_category_quests_body, items.size, cat.name), color = OnCardText.copy(alpha = 0.8f)) },
+            title = { Text(stringResource(R.string.delete_all_category_quests_title, categoryName), color = OnCardText) },
+            text = { Text(stringResource(R.string.delete_all_category_quests_body, items.size, categoryName), color = OnCardText.copy(alpha = 0.8f)) },
             confirmButton = {
                 TextButton(onClick = { showDeleteCategoryDialog = false; onDeleteCategory(cat) }) {
                     Text(stringResource(R.string.l10n_delete_all), color = Color(0xFFE57373))
@@ -6625,7 +6801,7 @@ fun QuestCategoryHeader(
                 .padding(vertical = 12.dp, horizontal = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(cat.name, color = OnCardText, fontWeight = FontWeight.Black, fontSize = 14.sp)
+            Text(categoryName, color = OnCardText, fontWeight = FontWeight.Black, fontSize = 14.sp)
             Spacer(Modifier.weight(1f))
             Box(modifier = Modifier.clip(CircleShape).background(OnCardText.copy(alpha = 0.1f)).padding(horizontal = 8.dp, vertical = 2.dp)) { Text("${items.size}", color = OnCardText, fontSize = 11.sp, fontWeight = FontWeight.Bold) }
             Spacer(Modifier.width(10.dp))
@@ -6757,6 +6933,7 @@ fun AddEditQuestDialog(
     var timerMinutes by remember { mutableIntStateOf(((initial?.targetSeconds ?: 300) / 60).coerceIn(1, 360)) }
     var healthMetric by remember { mutableStateOf(initial?.healthMetric ?: "steps") }
     var selectorHelp by remember { mutableStateOf<String?>(null) }
+    val iconFallbackDisabledHelp = stringResource(R.string.icon_fallback_disabled_help)
 
     // NEW: Image Picker Logic
     var imageUri by remember { mutableStateOf(initial?.imageUri) }
@@ -6770,7 +6947,7 @@ fun AddEditQuestDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss, containerColor = CardDarkBlue,
-        title = { Text(if (initial == null) "New Daily Quest" else "Edit Daily Quest", fontWeight = FontWeight.Bold, color = OnCardText) },
+        title = { Text(if (initial == null) stringResource(R.string.new_daily_quest_title) else stringResource(R.string.edit_daily_quest_title), fontWeight = FontWeight.Bold, color = OnCardText) },
         text = {
             Column(
                 modifier = Modifier
@@ -6825,7 +7002,7 @@ fun AddEditQuestDialog(
                                 .then(
                                     if (imageUri != null) {
                                         Modifier.clickable {
-                                            selectorHelp = "Icon fallback is disabled while an image is selected. Remove image to use icon."
+                                            selectorHelp = iconFallbackDisabledHelp
                                         }
                                     } else Modifier
                                 ),
@@ -6853,7 +7030,7 @@ fun AddEditQuestDialog(
 
                 ExposedDropdownMenuBox(expanded = categoryExpanded, onExpandedChange = { categoryExpanded = !categoryExpanded }) {
                     OutlinedTextField(
-                        value = category.name.lowercase().replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() },
+                        value = questCategoryLabel(category),
                         onValueChange = {},
                         readOnly = true,
                         singleLine = true,
@@ -6874,14 +7051,14 @@ fun AddEditQuestDialog(
                             DropdownMenuItem(
                                 text = {
                                     Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                                        Text(cat.name, fontWeight = FontWeight.SemiBold)
+                                        Text(questCategoryLabel(cat), fontWeight = FontWeight.SemiBold)
                                         Text(
                                             when (cat) {
-                                                QuestCategory.FITNESS -> "Exercise quests"
-                                                QuestCategory.STUDY -> "Learning quests"
-                                                QuestCategory.HYDRATION -> "Water and recovery quests"
-                                                QuestCategory.DISCIPLINE -> "Habit and consistency quests"
-                                                QuestCategory.MIND -> "Focus and mindset quests"
+                                                QuestCategory.FITNESS -> stringResource(R.string.category_desc_fitness)
+                                                QuestCategory.STUDY -> stringResource(R.string.category_desc_study)
+                                                QuestCategory.HYDRATION -> stringResource(R.string.category_desc_hydration)
+                                                QuestCategory.DISCIPLINE -> stringResource(R.string.category_desc_discipline)
+                                                QuestCategory.MIND -> stringResource(R.string.category_desc_mind)
                                             },
                                             color = OnCardText.copy(alpha = 0.62f),
                                             fontSize = 11.sp
@@ -7059,10 +7236,14 @@ fun AddEditQuestDialog(
                     target = safeTarget,
                     isPinned = isPinned,
                     imageUri = imageUri,
+                    packageId = initial?.packageId ?: "user_created",
+                    isActive = initial?.isActive ?: true,
                     objectiveType = objectiveType,
                     targetSeconds = if (objectiveType == QuestObjectiveType.TIMER) safeTarget else null,
                     healthMetric = if (objectiveType == QuestObjectiveType.HEALTH) healthMetric else null,
-                    healthAggregation = if (objectiveType == QuestObjectiveType.HEALTH) "daily_total" else null
+                    healthAggregation = if (objectiveType == QuestObjectiveType.HEALTH) {
+                        if (healthMetric == "heart_rate") "daily_avg" else "daily_total"
+                    } else null
                 ))
             }) {
                 Text(stringResource(R.string.save), color = accentStrong)
@@ -7083,7 +7264,31 @@ fun AddEditQuestDialog(
         )
     }
 }
-@OptIn(ExperimentalLayoutApi::class) @Composable fun CategoryChips(selected: QuestCategory, accentStrong: Color, onSelect: (QuestCategory) -> Unit) { FlowRow(modifier = Modifier.fillMaxWidth(), maxItemsInEachRow = 3, horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) { QuestCategory.entries.forEach { c -> Box(modifier = Modifier.height(32.dp).clip(RoundedCornerShape(99.dp)).background(if (c == selected) accentStrong.copy(alpha=0.4f) else Color.Transparent).border(1.dp, if(c==selected) accentStrong else OnCardText.copy(alpha=0.3f), RoundedCornerShape(99.dp)).clickable { onSelect(c) }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) { Text(c.name, color = OnCardText, fontSize = 11.sp) } } } }
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CategoryChips(selected: QuestCategory, accentStrong: Color, onSelect: (QuestCategory) -> Unit) {
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        maxItemsInEachRow = 3,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        QuestCategory.entries.forEach { c ->
+            Box(
+                modifier = Modifier
+                    .height(32.dp)
+                    .clip(RoundedCornerShape(99.dp))
+                    .background(if (c == selected) accentStrong.copy(alpha = 0.4f) else Color.Transparent)
+                    .border(1.dp, if (c == selected) accentStrong else OnCardText.copy(alpha = 0.3f), RoundedCornerShape(99.dp))
+                    .clickable { onSelect(c) }
+                    .padding(horizontal = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(questCategoryLabel(c), color = OnCardText, fontSize = 11.sp)
+            }
+        }
+    }
+}
 @Composable
 fun rememberNeonBorderBrush(primary: Color, secondary: Color = Color(0xFFFF2E97)): Brush {
     val neonEnabled = ThemeRuntime.neonFlowEnabled || ThemeRuntime.decorativeBordersEnabled
@@ -8141,7 +8346,7 @@ fun SettingRow(
 ) {
     SettingsSelectorRow(
         title = title,
-        valueLabel = if (value) "On" else "Off",
+        valueLabel = if (value) stringResource(R.string.on_label) else stringResource(R.string.off_label),
         enabled = enabled,
         onInfoClick = onInfoClick,
         warningInfo = warningInfo,
@@ -8167,7 +8372,7 @@ fun SettingRow(
             Text(stringResource(R.string.history_quests_count, entry.done, entry.total), color = OnCardText.copy(alpha = 0.72f), fontSize = 11.sp)
         }
         Box(modifier = Modifier.clip(RoundedCornerShape(999.dp)).background(if (entry.allDone) accentSoft else ProgressTrack).padding(horizontal = 9.dp, vertical = 5.dp)) {
-            Text(text = if (entry.allDone) "Completed" else "Missed", color = OnCardText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            Text(text = if (entry.allDone) stringResource(R.string.status_completed) else stringResource(R.string.status_missed), color = OnCardText, fontSize = 11.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -8228,6 +8433,7 @@ fun QuestCard(
     onTimerTick: (Int) -> Unit = {},
     onTimerComplete: (Int) -> Unit = {},
     onTimerPause: () -> Unit = {},
+    onHealthQuestStart: (Int, String?) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier,
     uiScale: Float = 1f,
     alwaysShowProgress: Boolean = false
@@ -8335,6 +8541,13 @@ fun QuestCard(
         }
     } else 0.dp
     val questCardShape = RoundedCornerShape(16.dp * uiScale)
+    val healthMetricLabel = when (quest.healthMetric?.trim()?.lowercase(Locale.getDefault())) {
+        "steps" -> stringResource(R.string.l10n_steps)
+        "heart_rate" -> stringResource(R.string.l10n_avg_heart_rate)
+        "distance_m" -> stringResource(R.string.l10n_distance_m)
+        "calories_kcal" -> stringResource(R.string.l10n_calories)
+        else -> null
+    }
 
     val progressLabel = if (isTimerQuest) {
         val sec = displayProgress.coerceAtLeast(0)
@@ -8346,6 +8559,11 @@ fun QuestCard(
         String.format(Locale.getDefault(), "%02d:%02d/%02d:%02d", curM, curS, tgtM, tgtS)
     } else {
         "$displayProgress/$target"
+    }
+    val progressRatio = if (target > 0) {
+        (displayProgress.toFloat() / target.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
     }
 
     Box(
@@ -8408,10 +8626,28 @@ fun QuestCard(
                     if (!isDone && (target != 2 || alwaysShowProgress || isTimerQuest)) {
                         Spacer(Modifier.width(8.dp))
                         Text(progressLabel, color = OnCardText.copy(alpha = 0.6f), fontSize = (10f * uiScale).sp)
-                        if (isHealthQuest && !quest.healthMetric.isNullOrBlank()) {
+                        if (isHealthQuest && !healthMetricLabel.isNullOrBlank()) {
                             Spacer(Modifier.width(6.dp))
-                            Text(quest.healthMetric!!, color = OnCardText.copy(alpha = 0.5f), fontSize = (9f * uiScale).sp)
+                            Text(healthMetricLabel, color = OnCardText.copy(alpha = 0.5f), fontSize = (9f * uiScale).sp)
                         }
+                    }
+                }
+                if (!isDone) {
+                    Spacer(Modifier.height((6.dp * uiScale).coerceAtLeast(4.dp)))
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height((6.dp * uiScale).coerceAtLeast(4.dp))
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(ProgressTrack.copy(alpha = 0.9f))
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(progressRatio)
+                                .clip(RoundedCornerShape(999.dp))
+                                .background(accentStrong)
+                        )
                     }
                 }
             }
@@ -8420,7 +8656,7 @@ fun QuestCard(
                 if (isTimerQuest && !isClaiming) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                         SmallActionPill(
-                            text = if (timerRunning) "PAUSE" else if (current <= 0) "START" else "RESUME",
+                            text = if (timerRunning) stringResource(R.string.action_pause) else if (current <= 0) stringResource(R.string.start) else stringResource(R.string.action_resume),
                             enabled = true,
                             accentSoft = if (timerRunning) accentSoft else accentStrong,
                             showShadow = true,
@@ -8431,7 +8667,7 @@ fun QuestCard(
                             }
                         )
                         SmallActionPill(
-                            text = "RESET",
+                            text = stringResource(R.string.action_reset),
                             enabled = current > 0,
                             accentSoft = accentSoft,
                             onClick = {
@@ -8458,9 +8694,10 @@ fun QuestCard(
                     }
                 } else {
                     val btnText = when {
-                        isClaiming -> "CLAIM"
-                        phase == 0 -> "START"
-                        isReadyToConfirmDone -> "DONE"
+                        isClaiming -> stringResource(R.string.claim)
+                        phase == 0 -> stringResource(R.string.start)
+                        isReadyToConfirmDone -> stringResource(R.string.done)
+                        isHealthQuest -> stringResource(R.string.l10n_sync_health)
                         else -> "+"
                     }
                     val btnColor = if (isClaiming) accentStrong else accentSoft
@@ -8485,8 +8722,7 @@ fun QuestCard(
                                 } else if (isReadyToConfirmDone) {
                                     onProgress(target + 1)
                                 } else if (isHealthQuest) {
-                                    // Health quests progress from synced metric snapshot.
-                                    onProgress(current)
+                                    onHealthQuestStart(quest.id, quest.healthMetric)
                                 } else {
                                     onProgress((current + 1).coerceAtMost(target))
                                 }
@@ -8513,7 +8749,7 @@ fun QuestCard(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "DONE",
+                        text = stringResource(R.string.done),
                         color = if (isLightTheme) OnCardText.copy(alpha = 0.16f) else Color(0xFF5A6472).copy(alpha = 0.38f),
                         fontSize = (16f * uiScale).sp,
                         fontWeight = FontWeight.Black,
@@ -8730,7 +8966,7 @@ fun FocusTimerDialog(accentStrong: Color, accentSoft: Color, onDismiss: () -> Un
                         isRunning = true
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = accentStrong)
-                ) { Text(if (inBreak) "Resume Break" else "Start Focus", color = readableTextColor(accentStrong)) }
+                ) { Text(if (inBreak) stringResource(R.string.focus_resume_break) else stringResource(R.string.focus_start), color = readableTextColor(accentStrong)) }
             }
         },
         dismissButton = {
@@ -8793,7 +9029,7 @@ fun CharacterView(data: CharacterData, scale: Float = 1f) {
 fun CharacterEditorDialog(initial: CharacterData, accentStrong: Color, onSave: (CharacterData) -> Unit, onDismiss: () -> Unit) {
     var head by remember { mutableLongStateOf(initial.headColor) }; var body by remember { mutableLongStateOf(initial.bodyColor) }; var legs by remember { mutableLongStateOf(initial.legsColor) }; var shoes by remember { mutableLongStateOf(initial.shoesColor) }
     val colors = listOf(0xFFFACE8D, 0xFF8D5524, 0xFFC68642, 0xFFE0AC69, 0xFFF44336, 0xFFE91E63, 0xFF9C27B0, 0xFF3F51B5, 0xFF2196F3, 0xFF00BCD4, 0xFF4CAF50, 0xFF8BC34A, 0xFFFFEB3B, 0xFFFF9800, 0xFF795548, 0xFF9E9E9E, 0xFF607D8B, 0xFF000000, 0xFFFFFFFF)
-    AlertDialog(onDismissRequest = onDismiss, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.character_customize_hero), color = OnCardText, fontWeight = FontWeight.Bold) }, text = { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) { CharacterView(CharacterData(head, body, legs, shoes), scale = 3f); ColorPickerRow("Skin", colors, head) { head = it }; ColorPickerRow("Shirt", colors, body) { body = it }; ColorPickerRow("Pants", colors, legs) { legs = it }; ColorPickerRow("Shoes", colors, shoes) { shoes = it } } }, confirmButton = { TextButton(onClick = { onSave(CharacterData(head, body, legs, shoes)) }) { Text(stringResource(R.string.character_save_look), color = accentStrong, fontWeight = FontWeight.Bold) } })
+    AlertDialog(onDismissRequest = onDismiss, containerColor = CardDarkBlue, title = { Text(stringResource(R.string.character_customize_hero), color = OnCardText, fontWeight = FontWeight.Bold) }, text = { Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) { CharacterView(CharacterData(head, body, legs, shoes), scale = 3f); ColorPickerRow(stringResource(R.string.character_skin), colors, head) { head = it }; ColorPickerRow(stringResource(R.string.character_shirt), colors, body) { body = it }; ColorPickerRow(stringResource(R.string.character_pants), colors, legs) { legs = it }; ColorPickerRow(stringResource(R.string.character_shoes), colors, shoes) { shoes = it } } }, confirmButton = { TextButton(onClick = { onSave(CharacterData(head, body, legs, shoes)) }) { Text(stringResource(R.string.character_save_look), color = accentStrong, fontWeight = FontWeight.Bold) } })
 }
 
 @Composable
@@ -8885,7 +9121,7 @@ fun ShopItemRow(
                 enabled = hasStock,
                 colors = ButtonDefaults.buttonColors(containerColor = accentStrong),
                 modifier = Modifier.height(32.dp)
-            ) { Text(if (!hasStock) "Sold Out" else if (!canAfford) "Buy" else "Buy", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
+            ) { Text(if (!hasStock) stringResource(R.string.sold_out) else stringResource(R.string.buy), color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold) }
         }
     }
 }
@@ -8893,13 +9129,15 @@ fun ShopItemRow(
 @Composable
 fun ShopItemEditorDialog(accentStrong: Color, initial: ShopItem?, onSave: (ShopItem) -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val shopDefaultDesc = stringResource(R.string.shop_default_desc)
+    val shopUnnamedItem = stringResource(R.string.shop_unnamed_item)
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
     var icon by remember { mutableStateOf(initial?.icon ?: "🍎") }
     var imageUri by remember { mutableStateOf(initial?.imageUri.orEmpty()) }
     var cost by remember { mutableStateOf((initial?.cost ?: 5).toString()) }
     var stock by remember { mutableStateOf((initial?.stock ?: 5).toString()) }
     var maxStock by remember { mutableStateOf((initial?.maxStock ?: 5).toString()) }
-    var description by remember { mutableStateOf(initial?.description ?: "Custom shop item") }
+    var description by remember { mutableStateOf(initial?.description ?: shopDefaultDesc) }
     var isConsumable by remember { mutableStateOf(initial?.isConsumable ?: true) }
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -8913,7 +9151,7 @@ fun ShopItemEditorDialog(accentStrong: Color, initial: ShopItem?, onSave: (ShopI
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = CardDarkBlue,
-        title = { Text(if (initial == null) "Create Shop Item" else "Edit Shop Item", color = accentStrong, fontWeight = FontWeight.Bold) },
+        title = { Text(if (initial == null) stringResource(R.string.shop_create_title) else stringResource(R.string.shop_edit_title), color = accentStrong, fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(stringResource(R.string.shop_name_label)) }, singleLine = true, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = OnCardText, unfocusedTextColor = OnCardText, cursorColor = accentStrong))
@@ -8954,9 +9192,9 @@ fun ShopItemEditorDialog(accentStrong: Color, initial: ShopItem?, onSave: (ShopI
             TextButton(onClick = {
                 val item = ShopItem(
                     id = initial?.id ?: UUID.randomUUID().toString(),
-                    name = name.ifBlank { "Unnamed Item" },
+                    name = name.ifBlank { shopUnnamedItem },
                     icon = icon.ifBlank { "🧩" },
-                    description = description.ifBlank { "Custom shop item" },
+                    description = description.ifBlank { shopDefaultDesc },
                     cost = cost.toIntOrNull() ?: 5,
                     stock = stock.toIntOrNull() ?: 5,
                     maxStock = maxStock.toIntOrNull() ?: 5,
@@ -9036,26 +9274,41 @@ fun DashboardScreen(
             HealthPermission.getReadPermission(TotalCaloriesBurnedRecord::class)
         )
     }
+    val healthSyncSyncedLabel = stringResource(R.string.health_sync_synced)
+    val healthSyncFailedLabel = stringResource(R.string.health_sync_failed)
+    val healthPermissionDeniedLabel = stringResource(R.string.health_permission_denied)
+    val healthInstallUpdateLabel = stringResource(R.string.health_install_update)
+    val healthNotSupportedLabel = stringResource(R.string.health_not_supported)
     var healthSyncStatus by remember { mutableStateOf<String?>(null) }
-    fun runHealthConnectSync() {
+    fun runHealthConnectSync(grantedOverride: Set<String>? = null) {
         scope.launch {
             runCatching {
-                val snapshot = HealthConnectReader.readTodaySnapshot(context)
+                val granted = if (!grantedOverride.isNullOrEmpty()) {
+                    grantedOverride
+                } else {
+                    val hcClient = androidx.health.connect.client.HealthConnectClient.getOrCreate(context)
+                    hcClient.permissionController.getGrantedPermissions()
+                }
+                if (granted.isEmpty()) {
+                    healthSyncStatus = healthPermissionDeniedLabel
+                    AppLog.w("health_permission_denied_stats")
+                    return@runCatching
+                }
+                val snapshot = HealthConnectReader.readTodaySnapshot(context, granted)
                 onSaveHealthSnapshot(snapshot)
-                healthSyncStatus = "Health Connect synced"
+                healthSyncStatus = healthSyncSyncedLabel
+                AppLog.event("health_sync_stats_success", "steps=${snapshot.steps},dist=${snapshot.distanceMeters.toInt()},kcal=${snapshot.caloriesKcal.toInt()}")
             }.onFailure {
-                healthSyncStatus = "Health Connect sync failed"
+                healthSyncStatus = healthSyncFailedLabel
+                AppLog.w("health_sync_stats_failed", it)
             }
         }
     }
     val healthPermissionLauncher = rememberLauncherForActivityResult(
         PermissionController.createRequestPermissionResultContract()
-    ) { granted ->
-        if (granted.containsAll(healthPermissions)) {
-            runHealthConnectSync()
-        } else {
-            healthSyncStatus = "Health permission denied"
-        }
+    ) { grantedAfterRequest ->
+        AppLog.event("health_permission_result_stats", "granted=${grantedAfterRequest.joinToString(",")}")
+        runHealthConnectSync(grantedAfterRequest)
     }
 
     ScalableScreen(modifier) { uiScale ->
@@ -9101,20 +9354,33 @@ fun DashboardScreen(
                         OutlinedButton(onClick = { showManual = true }, modifier = Modifier.weight(1f)) { Text(stringResource(R.string.l10n_manual_update)) }
                         OutlinedButton(
                             onClick = {
-                                when (HealthConnectReader.sdkStatus(context)) {
+                                val status = HealthConnectReader.sdkStatus(context)
+                                AppLog.event("health_status_stats", "status=$status")
+                                when (status) {
                                     HealthConnectReader.STATUS_AVAILABLE -> {
                                         scope.launch {
-                                            val hcClient = androidx.health.connect.client.HealthConnectClient.getOrCreate(context)
-                                            val granted = hcClient.permissionController.getGrantedPermissions()
-                                            if (granted.containsAll(healthPermissions)) {
-                                                runHealthConnectSync()
-                                            } else {
-                                                healthPermissionLauncher.launch(healthPermissions)
+                                            runCatching {
+                                                val hcClient = androidx.health.connect.client.HealthConnectClient.getOrCreate(context)
+                                                val granted = hcClient.permissionController.getGrantedPermissions()
+                                                val missing = healthPermissions - granted
+                                                AppLog.event(
+                                                    "health_permission_check_stats",
+                                                    "required=${healthPermissions.joinToString(",")};granted=${granted.joinToString(",")};missing=${missing.joinToString(",")}"
+                                                )
+                                                if (missing.isEmpty()) {
+                                                    runHealthConnectSync(granted)
+                                                } else {
+                                                    healthPermissionLauncher.launch(missing)
+                                                }
+                                            }.onFailure {
+                                                healthSyncStatus = healthSyncFailedLabel
+                                                AppLog.w("health_permission_check_failed_stats", it)
                                             }
                                         }
                                     }
                                     HealthConnectReader.STATUS_NEEDS_INSTALL -> {
-                                        healthSyncStatus = "Install or update Health Connect"
+                                        healthSyncStatus = healthInstallUpdateLabel
+                                        AppLog.w("health_status_needs_install_stats")
                                         runCatching {
                                             context.startActivity(
                                                 Intent(
@@ -9125,7 +9391,8 @@ fun DashboardScreen(
                                         }
                                     }
                                     else -> {
-                                        healthSyncStatus = "Health Connect not supported on this device"
+                                        healthSyncStatus = healthNotSupportedLabel
+                                        AppLog.w("health_status_not_supported_stats")
                                     }
                                 }
                             },
@@ -9195,8 +9462,8 @@ fun DashboardScreen(
                             StatTile(Icons.Default.EmojiEvents, stringResource(R.string.dashboard_achievements), "$achievedCount", Color(0xFFBA68C8), Modifier.weight(1f))
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            StatTile(Icons.Default.EventAvailable, "Best Day", bestWeekday, Color(0xFF4FC3F7), Modifier.weight(1f))
-                            StatTile(Icons.Default.Insights, "Trend", if ((trendPoints.lastOrNull() ?: 0f) >= (trendPoints.firstOrNull() ?: 0f)) "Up" else "Down", Color(0xFF26A69A), Modifier.weight(1f))
+                            StatTile(Icons.Default.EventAvailable, stringResource(R.string.dashboard_best_day), bestWeekday, Color(0xFF4FC3F7), Modifier.weight(1f))
+                            StatTile(Icons.Default.Insights, stringResource(R.string.dashboard_trend), if ((trendPoints.lastOrNull() ?: 0f) >= (trendPoints.firstOrNull() ?: 0f)) stringResource(R.string.trend_up) else stringResource(R.string.trend_down), Color(0xFF26A69A), Modifier.weight(1f))
                         }
                     }
                 }
@@ -9206,11 +9473,11 @@ fun DashboardScreen(
                     Text(stringResource(R.string.dashboard_attribute_matrix), color = OnCardText.copy(alpha=0.5f), fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.5.sp)
                     Spacer(Modifier.height(6.dp))
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AttributeRow("Strength", attributes.str)
-                        AttributeRow("Intellect", attributes.int)
-                        AttributeRow("Vitality", attributes.vit)
-                        AttributeRow("Endurance", attributes.end)
-                        AttributeRow("Faith", attributes.fth)
+                        AttributeRow(stringResource(R.string.strength), attributes.str)
+                        AttributeRow(stringResource(R.string.intellect), attributes.int)
+                        AttributeRow(stringResource(R.string.vitality), attributes.vit)
+                        AttributeRow(stringResource(R.string.endurance), attributes.end)
+                        AttributeRow(stringResource(R.string.faith), attributes.fth)
                     }
                 }
 
@@ -9568,7 +9835,7 @@ fun MainQuestItem(
                         }
 
                         Button(onClick = { SoundManager.playClick(); if (quest.steps.isEmpty()) onOpenWizard() else onUpdate(quest.copy(currentStep = quest.currentStep + 1)) }, colors = ButtonDefaults.buttonColors(containerColor = accentSoft), modifier = Modifier.fillMaxWidth()) {
-                            Text(if(quest.steps.isEmpty()) "FINISH QUEST" else "COMPLETE STEP", color = OnCardText)
+                            Text(if(quest.steps.isEmpty()) stringResource(R.string.finish_quest_btn) else stringResource(R.string.complete_step_btn), color = OnCardText)
                         }
                     }
                     else {

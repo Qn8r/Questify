@@ -709,6 +709,8 @@ Check back soon!</string>
     <string name="difficulty_help">Tier controls quest difficulty. Higher tiers should usually reward more XP.</string>
     <string name="xp_label">XP</string>
     <string name="xp_help">XP granted when quest is completed and claimed.</string>
+    <string name="time_label">Time</string>
+    <string name="reminder_label">Reminder</string>
     <string name="auto_label">Auto</string>
     <string name="value_percent_prefixed">Value %1$d%%</string>
     <string name="font_default">Default</string>
@@ -736,4 +738,172 @@ Check back soon!</string>
         <item>Fri</item>
         <item>Sat</item>
     </string-array>
+
+    <!-- Plan Types -->
+    <string name="plan_type_general">General</string>
+    <string name="plan_type_workout">Workout</string>
+    <string name="plan_type_deep_work">Deep Work</string>
+    <string name="plan_type_hydrate">Hydrate</string>
+    <string name="plan_type_sleep">Sleep</string>
+    <string name="plan_type_study">Study</string>
+
+    <!-- Feedback Categories -->
+    <string name="feedback_bug">Bug</string>
+    <string name="feedback_uiux">UI/UX</string>
+    <string name="feedback_feature_request">Feature Request</string>
+    <string name="feedback_performance">Performance</string>
+    <string name="feedback_general">General</string>
+
+    <!-- Tiers -->
+    <string name="tier_starter">Starter</string>
+    <string name="tier_consistency">Consistency</string>
+    <string name="tier_progress">Progress</string>
+    <string name="tier_challenge">Challenge</string>
+    <string name="tier_mastery">Mastery</string>
+
+    <!-- Days -->
+    <string name="day_today">Today</string>
+    <string name="day_yesterday">Yesterday</string>
+    <string name="day_monday">Monday</string>
+    <string name="day_tuesday">Tuesday</string>
+    <string name="day_wednesday">Wednesday</string>
+    <string name="day_thursday">Thursday</string>
+    <string name="day_friday">Friday</string>
+    <string name="day_saturday">Saturday</string>
+    <string name="day_sunday">Sunday</string>
+
+    <!-- Onboarding Templates -->
+    <string name="template_real_daily_life">Real Daily Life System</string>
+    <string name="template_limit_breaker">Limit Breaker (Saitama)</string>
+    <string name="template_empty_start">Empty Start</string>
+
+    <!-- Snackbar Messages -->
+    <string name="snackbar_comment_failed">Comment failed to post.</string>
+    <string name="snackbar_vote_failed">Vote failed.</string>
+    <string name="snackbar_google_drive_first">Connect Google Drive first.</string>
+    <string name="snackbar_cloud_sync_empty">Cloud sync failed: backup empty.</string>
+    <string name="snackbar_cloud_backup_synced">Cloud backup synced.</string>
+    <string name="snackbar_cloud_sync_failed">Cloud sync failed. Check Google account/permission.</string>
+    <string name="snackbar_no_cloud_backup">No cloud backup found for this account.</string>
+    <string name="snackbar_cloud_restored">Cloud backup restored.</string>
+    <string name="snackbar_cloud_restore_failed">Cloud backup restore failed.</string>
+    <string name="snackbar_google_cloud_connected">Google cloud connected.</string>
+    <string name="snackbar_feedback_sent">Feedback sent.</string>
+    <string name="snackbar_achievement_unlocked">New Achievement Unlocked!</string>
+    <string name="snackbar_google_signin_canceled">Google sign-in canceled.</string>
+    <string name="snackbar_google_id_token_failed">Failed to get Google ID token.</string>
+    <string name="snackbar_google_signin_failed">Google sign-in failed.</string>
+    <string name="snackbar_google_web_client_missing">Google Web Client ID not configured.</string>
+    <string name="snackbar_signed_out">Signed out.</string>
+    <string name="snackbar_data_schema_newer">Data schema is newer than this app build.</string>
+    <string name="snackbar_community_offline">Community sync offline. Using local data.</string>
+    <string name="snackbar_template_link_too_large">Template link too large.</string>
+    <string name="snackbar_template_link_invalid">Template link is invalid or too large.</string>
+    <string name="snackbar_read_template_failed">Failed to read template link.</string>
+    <string name="snackbar_new_day_started">Start of a new day!</string>
+    <string name="snackbar_publishing_cooldown">Publishing cooldown active. Try again in a few minutes.</string>
+    <string name="snackbar_publishing_locked">Publishing temporarily locked due to spam protection.</string>
+    <string name="snackbar_title_too_short">Title is too short.</string>
+    <string name="snackbar_description_too_short">Description is too short.</string>
+    <string name="snackbar_tags_limit">Use up to 8 tags.</string>
+    <string name="snackbar_tags_invalid">Tags contain unsupported characters.</string>
+    <string name="snackbar_unsafe_content">Publish blocked: unsafe content detected.</string>
+    <string name="snackbar_title_duplicate">Challenge title already exists in community.</string>
+    <string name="snackbar_nothing_safe_to_publish">Nothing safe to publish in this template.</string>
+    <string name="snackbar_challenge_published">Challenge published!</string>
+    <string name="snackbar_report_submitted">Report submitted.</string>
+    <string name="snackbar_premium_template">This is a premium template. Enable Creator Pass (beta) in Settings.</string>
+    <string name="snackbar_quest_removed">Quest removed from today.</string>
+    <string name="snackbar_not_enough_gold">Not enough Gold</string>
+    <string name="snackbar_custom_mode_required">Enable Custom Mode in Settings.</string>
+    <string name="snackbar_shop_item_saved">Shop item saved</string>
+    <string name="snackbar_plan_title_required">Plan title required.</string>
+    <string name="snackbar_plan_added">Plan added</string>
+    <string name="snackbar_plan_removed">Plan removed</string>
+    <string name="snackbar_quest_pool_updated">Quest pool updated. Tap \'Start New Day\' to apply.</string>
+    <string name="snackbar_deleted">Deleted</string>
+    <string name="snackbar_reset_complete">Reset complete. Default pack enabled.</string>
+    <string name="snackbar_theme_applied">Theme &amp; Quests Applied!</string>
+    <string name="snackbar_template_saved">Template saved.</string>
+    <string name="snackbar_daily_quest_saved">Daily quest saved.</string>
+    <string name="snackbar_daily_quest_deleted">Daily quest deleted.</string>
+    <string name="snackbar_main_quest_saved">Main quest saved.</string>
+    <string name="snackbar_main_quest_deleted">Main quest deleted.</string>
+    <string name="snackbar_incompatible_template">Template is incompatible. Re-export it from latest app version.</string>
+    <string name="snackbar_family_quests_deleted">All \"%1$s\" quests deleted.</string>
+    <string name="snackbar_backup_export_failed">Backup export failed.</string>
+    <string name="snackbar_advanced_template_applied">Advanced template applied.</string>
+    <string name="snackbar_quest_started">Quest started</string>
+    <string name="snackbar_quest_completed">Quest completed</string>
+    <string name="snackbar_quests_rerolled">Quests rerolled</string>
+    <string name="snackbar_refresh_limit_reached">Refresh limit reached</string>
+    <string name="snackbar_ready_to_claim">Ready to claim</string>
+    <string name="snackbar_marked_done">Marked done</string>
+    <string name="snackbar_purchased">Purchased %1$s</string>
+    <string name="snackbar_level_up">Level Up!</string>
+    <string name="snackbar_template_imported">Template imported</string>
+    <string name="snackbar_template_deleted">Template deleted</string>
+    <string name="snackbar_backup_restored">Backup restored</string>
+    <string name="snackbar_backup_exported">Backup exported</string>
+    <string name="snackbar_coming_soon">Coming soon</string>
+    <string name="snackbar_enable_custom_mode">Enable Custom Mode in Settings to add quests.</string>
+    <string name="feedback_report_title">Questify Feedback</string>
+    <string name="feedback_report_user">User: %1$s (%2$s)</string>
+    <string name="feedback_report_category">Category: %1$s</string>
+    <string name="feedback_report_level">Level: %1$d</string>
+    <string name="feedback_report_theme">Theme: %1$s</string>
+    <string name="feedback_report_premium">Premium: %1$s</string>
+    <string name="feedback_report_cloud_sync">Cloud sync: %1$s</string>
+    <string name="feedback_report_queue_pending">Queue pending: %1$d</string>
+    <string name="feedback_report_message_label">Message:</string>
+    <string name="feedback_report_logs_label">Recent Logs:</string>
+    <string name="feedback_report_no_logs">No logs captured.</string>
+    <string name="community_unknown_date">Unknown date</string>
+    <string name="community_trust_verified_safe">Verified Safe</string>
+    <string name="community_trust_sanitized">Sanitized</string>
+    <string name="community_trust_flagged">Flagged</string>
+    <string name="community_rank_legend">Legend</string>
+    <string name="community_rank_trusted">Trusted</string>
+    <string name="community_rank_rising">Rising</string>
+    <string name="community_rank_new">New</string>
+    <string name="community_unmute_creator">Unmute creator</string>
+    <string name="community_mute_creator">Mute creator</string>
+    <string name="community_unblock_creator">Unblock creator</string>
+    <string name="community_block_creator">Block creator</string>
+    <string name="community_detail_line">by %1$s • %2$s • Trust: %3$s • Remixes %4$d</string>
+    <string name="community_following">Following</string>
+    <string name="community_follow">Follow</string>
+    <string name="template_default_name">My Custom MMO</string>
+    <string name="template_current_setup_name">My Current Setup</string>
+    <string name="backup_default_name">My Backup</string>
+    <string name="new_daily_quest_title">New Daily Quest</string>
+    <string name="edit_daily_quest_title">Edit Daily Quest</string>
+    <string name="icon_fallback_disabled_help">Icon fallback is disabled while an image is selected. Remove image to use icon.</string>
+    <string name="category_desc_fitness">Exercise quests</string>
+    <string name="category_desc_study">Learning quests</string>
+    <string name="category_desc_hydration">Water and recovery quests</string>
+    <string name="category_desc_discipline">Habit and consistency quests</string>
+    <string name="category_desc_mind">Focus and mindset quests</string>
+    <string name="status_completed">Completed</string>
+    <string name="status_missed">Missed</string>
+    <string name="action_pause">PAUSE</string>
+    <string name="action_resume">RESUME</string>
+    <string name="action_reset">RESET</string>
+    <string name="focus_resume_break">Resume Break</string>
+    <string name="focus_start">Start Focus</string>
+    <string name="shop_default_desc">Custom shop item</string>
+    <string name="shop_create_title">Create Shop Item</string>
+    <string name="shop_edit_title">Edit Shop Item</string>
+    <string name="shop_unnamed_item">Unnamed Item</string>
+    <string name="health_sync_synced">Health Connect synced</string>
+    <string name="health_sync_failed">Health Connect sync failed</string>
+    <string name="health_permission_denied">Health permission denied</string>
+    <string name="health_install_update">Install or update Health Connect</string>
+    <string name="health_not_supported">Health Connect not supported on this device</string>
+    <string name="health_permissions_rationale_title">Health Access Needed</string>
+    <string name="health_permissions_rationale_body">Questify reads Health Connect data only to update your health quests and dashboard stats.</string>
+    <string name="trend_up">Up</string>
+    <string name="trend_down">Down</string>
+    <string name="theme_glass_drift_subtitle">Transparent glass layers over scenic backgrounds</string>
 </resources>
+

@@ -14,6 +14,11 @@ import kotlin.random.Random
 val UTC: TimeZone = TimeZone.getTimeZone("UTC")
 const val REAL_DAILY_LIFE_PACKAGE_ID: String = "real_daily_life_v1"
 const val REAL_WORLD_MOMENTUM_PACKAGE_ID: String = "real_world_momentum_v1"
+const val QUEST_FEATURE_TEST_PACKAGE_ID: String = "quest_feature_test_v1"
+
+private fun isArabicLanguage(lang: String): Boolean {
+    return AppLanguage.resolve(lang) == AppLanguage.AR
+}
 
 fun epochDayNow(): Long {
     val cal = Calendar.getInstance()
@@ -102,10 +107,9 @@ fun formatEpochDayFull(epochDay: Long): String {
 
 fun formatEpochDay(epochDay: Long, lang: String = "en"): String {
     val today = epochDayNow()
-    val isAr = lang == "ar"
     return when (epochDay) {
-        today -> if (isAr) "اليوم" else "Today"
-        today - 1L -> if (isAr) "أمس" else "Yesterday"
+        today -> localize(lang, "Today", AppLanguage.AR to "اليوم")
+        today - 1L -> localize(lang, "Yesterday", AppLanguage.AR to "أمس")
         else -> {
             val (y, m, d) = ymdFromEpoch(epochDay)
             val cal = GregorianCalendar(UTC)
@@ -225,9 +229,42 @@ fun difficultyCapForLevel(level: Int): Int = when { level <= 2 -> 1; level <= 5 
 val categoryOrder = listOf(QuestCategory.FITNESS, QuestCategory.STUDY, QuestCategory.HYDRATION, QuestCategory.DISCIPLINE, QuestCategory.MIND)
 
 fun stableQuestId(cat: QuestCategory, t: QuestTemplate): Int {
-    val key = "${cat.name}|${t.title}|${t.icon}|${t.difficulty}|${t.xp}"
+    val key = "${cat.name}|${t.title}|${t.icon}|${t.difficulty}|${t.xp}|${t.target}|${t.objectiveType.name}|${t.targetSeconds ?: 0}|${t.healthMetric.orEmpty()}|${t.healthAggregation.orEmpty()}|${t.packageId}|${t.imageUri.orEmpty()}"
     val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
     return java.nio.ByteBuffer.wrap(bytes, 0, 4).int and 0x7fffffff
+}
+
+private fun hashedQuestId(key: String): Int {
+    val bytes = java.security.MessageDigest.getInstance("SHA-256").digest(key.toByteArray(Charsets.UTF_8))
+    return java.nio.ByteBuffer.wrap(bytes, 0, 4).int and 0x7fffffff
+}
+
+private fun questKeyForCollision(quest: Quest, salt: Int): String {
+    return "${quest.category.name}|${quest.title}|${quest.icon}|${quest.difficulty}|${quest.xpReward}|${quest.target}|${quest.objectiveType.name}|${quest.targetSeconds ?: 0}|${quest.healthMetric.orEmpty()}|${quest.healthAggregation.orEmpty()}|${quest.packageId}|${quest.imageUri.orEmpty()}|$salt"
+}
+
+fun ensureUniqueQuestIds(list: List<Quest>): List<Quest> {
+    if (list.isEmpty()) return list
+    val usedIds = mutableSetOf<Int>()
+    var collisions = 0
+    val result = list.map { quest ->
+        if (usedIds.add(quest.id)) {
+            quest
+        } else {
+            collisions++
+            var salt = 1
+            var nextId: Int
+            do {
+                nextId = hashedQuestId(questKeyForCollision(quest, salt))
+                salt++
+            } while (!usedIds.add(nextId))
+            quest.copy(id = nextId)
+        }
+    }
+    if (collisions > 0) {
+        AppLog.w("Resolved $collisions duplicate quest id collision(s)")
+    }
+    return result
 }
 
 fun generateDailyQuests(seed: Long, playerLevel: Int, pool: List<QuestTemplate>, desiredCount: Int = 5): List<Quest> {
@@ -244,7 +281,7 @@ fun generateDailyQuests(seed: Long, playerLevel: Int, pool: List<QuestTemplate>,
     val random = java.util.Random(seed)
     val randomSelection = others.shuffled(random).take(countNeeded)
 
-    return (pinned + randomSelection).map { t ->
+    return ensureUniqueQuestIds((pinned + randomSelection).map { t ->
         Quest(
             id = stableQuestId(t.category, t),
             title = t.title,
@@ -260,7 +297,7 @@ fun generateDailyQuests(seed: Long, playerLevel: Int, pool: List<QuestTemplate>,
             healthMetric = t.healthMetric,
             healthAggregation = t.healthAggregation
         )
-    }
+    })
 }
 fun refreshKeepingCompleted(
     current: List<Quest>,
@@ -304,7 +341,7 @@ fun refreshKeepingCompleted(
 
     val targetCount = desiredCount.coerceIn(3, 10)
     val seeded = (currentPinnedIds + replacements).distinctBy { it.id }.toMutableList()
-    if (seeded.size >= targetCount) return seeded.take(targetCount)
+    if (seeded.size >= targetCount) return ensureUniqueQuestIds(seeded.take(targetCount))
 
     val usedIds = seeded.map { it.id }.toMutableSet()
     val extraTemplates = templates.shuffled(rng)
@@ -331,13 +368,13 @@ fun refreshKeepingCompleted(
             if (seeded.size >= targetCount) break
         }
     }
-    return seeded.take(targetCount)
+    return ensureUniqueQuestIds(seeded.take(targetCount))
 }
 
 fun getInitialDefaultPool(lang: String = "en"): List<CustomTemplate> {
     val pool = mutableListOf<CustomTemplate>()
     val pkg = "default_pack"
-    val isAr = lang == "ar"
+    val isAr = isArabicLanguage(lang)
 
     // Helper: Default target is 2 for "Start -> Done -> Claim" flow
     fun add(title: String, icon: String, xp: Int, cat: QuestCategory, target: Int = 2) {
@@ -421,7 +458,7 @@ fun getInitialDefaultPool(lang: String = "en"): List<CustomTemplate> {
 }
 fun getInitialMainQuests(lang: String = "en"): List<CustomMainQuest> {
     val pkg = "default_pack"
-    val isAr = lang == "ar"
+    val isAr = isArabicLanguage(lang)
     return if (isAr) {
         listOf(
             CustomMainQuest(java.util.UUID.randomUUID().toString(), "نزهة صباحية", "تسلق التلة المحلية.", 300, listOf("حزم المعدات", "الوصول للقاعدة", "القمة"), packageId = pkg),
@@ -439,7 +476,7 @@ fun getInitialMainQuests(lang: String = "en"): List<CustomMainQuest> {
 
 fun getLimitBreakerTemplate(lang: String = "en"): GameTemplate {
     val pkg = "saitama_v1"
-    val isAr = lang == "ar"
+    val isAr = isArabicLanguage(lang)
 
     // 1. Saitama Daily Routine
     val daily = if (isAr) {
@@ -555,7 +592,7 @@ fun generateDailyQuestsAdaptive(
     val fallback = if (filtered.isEmpty()) pool.filter { it.difficulty <= cap } else filtered
     val base = generateDailyQuests(seed = seed, playerLevel = adjustedLevel, pool = fallback, desiredCount = desiredCount)
     val result = if (base.size == desiredCount.coerceIn(3, 10)) base else generateDailyQuests(seed = seed, playerLevel = adjustedLevel, pool = pool, desiredCount = desiredCount)
-    if (completedQuests.isEmpty()) return result
+    if (completedQuests.isEmpty()) return ensureUniqueQuestIds(result)
 
     fun progressionKey(category: QuestCategory, title: String): String {
         val baseTitle = title.substringBefore("•").trim().replace(Regex("""\s*#\d+$"""), "")
@@ -575,7 +612,7 @@ fun generateDailyQuestsAdaptive(
         }
         .groupBy { it.category }
 
-    if (continuityCandidatesByCategory.isEmpty()) return result
+    if (continuityCandidatesByCategory.isEmpty()) return ensureUniqueQuestIds(result)
 
     val rng = Random(seed xor 0x5EEDL)
     val upgraded = result.toMutableList()
@@ -597,12 +634,11 @@ fun generateDailyQuestsAdaptive(
             imageUri = pick.imageUri
         )
     }
-    return upgraded
+    return ensureUniqueQuestIds(upgraded)
 }
 
 fun bestWeekdayByCompletion(history: Map<Long, HistoryEntry>, lang: String = "en"): String {
-    if (history.isEmpty()) return "N/A"
-    val isAr = lang == "ar"
+    if (history.isEmpty()) return localize(lang, "N/A", AppLanguage.AR to "غير متاح")
     val buckets = mutableMapOf<Int, MutableList<Float>>()
     history.forEach { (day, entry) ->
         val cal = GregorianCalendar(UTC)
@@ -611,15 +647,16 @@ fun bestWeekdayByCompletion(history: Map<Long, HistoryEntry>, lang: String = "en
         val ratio = entry.done.toFloat() / entry.total.coerceAtLeast(1).toFloat()
         buckets.getOrPut(dow) { mutableListOf() }.add(ratio)
     }
-    val best = buckets.maxByOrNull { (_, values) -> values.average() }?.key ?: return "N/A"
+    val best = buckets.maxByOrNull { (_, values) -> values.average() }?.key
+        ?: return localize(lang, "N/A", AppLanguage.AR to "غير متاح")
     return when (best) {
-        Calendar.MONDAY -> if (isAr) "الإثنين" else "Monday"
-        Calendar.TUESDAY -> if (isAr) "الثلاثاء" else "Tuesday"
-        Calendar.WEDNESDAY -> if (isAr) "الأربعاء" else "Wednesday"
-        Calendar.THURSDAY -> if (isAr) "الخميس" else "Thursday"
-        Calendar.FRIDAY -> if (isAr) "الجمعة" else "Friday"
-        Calendar.SATURDAY -> if (isAr) "السبت" else "Saturday"
-        else -> if (isAr) "الأحد" else "Sunday"
+        Calendar.MONDAY -> localize(lang, "Monday", AppLanguage.AR to "الإثنين")
+        Calendar.TUESDAY -> localize(lang, "Tuesday", AppLanguage.AR to "الثلاثاء")
+        Calendar.WEDNESDAY -> localize(lang, "Wednesday", AppLanguage.AR to "الأربعاء")
+        Calendar.THURSDAY -> localize(lang, "Thursday", AppLanguage.AR to "الخميس")
+        Calendar.FRIDAY -> localize(lang, "Friday", AppLanguage.AR to "الجمعة")
+        Calendar.SATURDAY -> localize(lang, "Saturday", AppLanguage.AR to "السبت")
+        else -> localize(lang, "Sunday", AppLanguage.AR to "الأحد")
     }
 }
 
@@ -628,7 +665,7 @@ fun getDefaultGameTemplate(lang: String = "en"): GameTemplate {
     val daily = getRealDailyLifePool(pkg, lang)
     val main = getRealDailyLifeMainQuests(pkg, lang)
     return GameTemplate(
-        templateName = if (lang == "ar") "نظام الحياة اليومية الحقيقي" else "Real Daily Life System",
+        templateName = localize(lang, "Real Daily Life System", AppLanguage.AR to "نظام الحياة اليومية الحقيقي"),
         appTheme = AppTheme.DEFAULT,
         dailyQuests = daily,
         mainQuests = main,
@@ -641,7 +678,7 @@ fun getDefaultGameTemplate(lang: String = "en"): GameTemplate {
 fun getEmptyStarterTemplate(lang: String = "en"): GameTemplate {
     val pkg = "empty_pack"
     return GameTemplate(
-        templateName = if (lang == "ar") "بداية فارغة" else "Empty Start",
+        templateName = localize(lang, "Empty Start", AppLanguage.AR to "بداية فارغة"),
         appTheme = AppTheme.DEFAULT,
         dailyQuests = emptyList(),
         mainQuests = emptyList(),
@@ -665,14 +702,20 @@ private fun expandRealLifeSeeds(
     seeds: List<RealLifeSeed>,
     lang: String = "en"
 ): List<QuestTemplate> {
-    val isAr = lang == "ar"
-    val tierLabels = if (isAr) listOf("مبتدئ", "استمرارية", "تقدم", "تحدي", "إتقان") else listOf("Starter", "Consistency", "Progress", "Challenge", "Mastery")
+    val tierLabels = listOf(
+        localize(lang, "Starter", AppLanguage.AR to "مبتدئ"),
+        localize(lang, "Consistency", AppLanguage.AR to "استمرارية"),
+        localize(lang, "Progress", AppLanguage.AR to "تقدم"),
+        localize(lang, "Challenge", AppLanguage.AR to "تحدي"),
+        localize(lang, "Mastery", AppLanguage.AR to "إتقان")
+    )
     val tierTargetScale = listOf(1, 1, 2, 3, 4)
     val tierXpBonus = listOf(0, 8, 20, 36, 56)
     return seeds.flatMap { seed ->
         (1..5).map { tier ->
             val tierIndex = tier - 1
-            val title = if (isAr) "${seed.titleAr} • ${tierLabels[tierIndex]}" else "${seed.title} • ${tierLabels[tierIndex]}"
+            val seedTitle = localize(lang, seed.title, AppLanguage.AR to seed.titleAr)
+            val title = "$seedTitle • ${tierLabels[tierIndex]}"
             QuestTemplate(
                 category = category,
                 difficulty = tier,
@@ -810,7 +853,7 @@ private fun getRealDailyLifePool(packageId: String, lang: String = "en"): List<Q
 }
 
 private fun getRealDailyLifeMainQuests(packageId: String, lang: String = "en"): List<CustomMainQuest> {
-    val isAr = lang == "ar"
+    val isAr = isArabicLanguage(lang)
     return if (isAr) {
         listOf(
             CustomMainQuest("life_arc_1", "الأسبوع 1: استقرار الصباح", "ثبت روتينًا صباحيًا قابلاً للتكرار وحدًا أدنى للترطيب.", 450, listOf("الاستيقاظ في الوقت المحدد 4 أيام", "شرب الماء عند الاستيقاظ", "تخطيط أولوية واحدة كل يوم"), packageId = packageId),
@@ -840,9 +883,8 @@ private fun getRealDailyLifeMainQuests(packageId: String, lang: String = "en"): 
 
 fun getRealWorldMomentumTemplate(lang: String = "en"): GameTemplate {
     val pkg = REAL_WORLD_MOMENTUM_PACKAGE_ID
-    val isAr = lang == "ar"
     return GameTemplate(
-        templateName = if (isAr) "زخم العالم الحقيقي" else "Real World Momentum",
+        templateName = localize(lang, "Real World Momentum", AppLanguage.AR to "زخم العالم الحقيقي"),
         appTheme = AppTheme.DEFAULT,
         dailyQuests = getRealDailyLifePool(pkg, lang),
         mainQuests = getRealWorldMomentumMainQuests(pkg, lang),
@@ -853,7 +895,7 @@ fun getRealWorldMomentumTemplate(lang: String = "en"): GameTemplate {
 }
 
 private fun getRealWorldMomentumMainQuests(packageId: String, lang: String = "en"): List<CustomMainQuest> {
-    val isAr = lang == "ar"
+    val isAr = isArabicLanguage(lang)
     return if (isAr) {
         listOf(
             CustomMainQuest(
@@ -1042,29 +1084,117 @@ private fun getRealWorldMomentumMainQuests(packageId: String, lang: String = "en
 }
 
 fun getDefaultShopItems(lang: String = "en"): List<ShopItem> {
-    val isAr = lang == "ar"
-    return if (isAr) {
+    return listOf(
+        ShopItem(
+            "shop_apple",
+            localize(lang, "Apple", AppLanguage.AR to "تفاحة"),
+            "\uD83C\uDF4E",
+            localize(lang, "Simple snack reward", AppLanguage.AR to "مكافأة وجبة خفيفة بسيطة"),
+            5, 5, 5, true
+        ),
+        ShopItem(
+            "shop_coffee",
+            localize(lang, "Coffee Break", AppLanguage.AR to "استراحة قهوة"),
+            "\u2615",
+            localize(lang, "Take a relaxing coffee break", AppLanguage.AR to "خذ استراحة قهوة مريحة"),
+            15, 3, 3, true
+        )
+    )
+}
+
+fun getQuestFeatureTestTemplate(lang: String = "en"): GameTemplate {
+    val pkg = QUEST_FEATURE_TEST_PACKAGE_ID
+    val isAr = isArabicLanguage(lang)
+    val daily = if (isAr) {
         listOf(
-            ShopItem("shop_apple", "تفاحة", "🍎", "مكافأة وجبة خفيفة بسيطة", 5, 5, 5, true),
-            ShopItem("shop_coffee", "استراحة قهوة", "☕", "خذ استراحة قهوة مريحة", 15, 3, 3, true)
+            // Fitness (5)
+            QuestTemplate(QuestCategory.FITNESS, 1, "مشي خفيف 1 كم", "🚶", 24, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.FITNESS, 1, "جري 12 دقيقة", "🏃", 34, 720, isPinned = true, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 720),
+            QuestTemplate(QuestCategory.FITNESS, 3, "هدف الخطوات", "👟", 32, 6000, packageId = pkg, objectiveType = QuestObjectiveType.HEALTH, healthMetric = "steps", healthAggregation = "daily_total"),
+            QuestTemplate(QuestCategory.FITNESS, 2, "تمدد الحركة 10 دقائق", "🤸", 26, 600, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 600),
+            QuestTemplate(QuestCategory.FITNESS, 4, "حرق 300 سعرة", "🔥", 46, 300, packageId = pkg, objectiveType = QuestObjectiveType.HEALTH, healthMetric = "calories_kcal", healthAggregation = "daily_total"),
+            // Study (5)
+            QuestTemplate(QuestCategory.STUDY, 1, "جلسة قراءة مركزة", "📚", 24, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.STUDY, 1, "تركيز 25 دقيقة", "⏱️", 34, 1500, isPinned = true, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 1500),
+            QuestTemplate(QuestCategory.STUDY, 2, "مراجعة 20 بطاقة", "🃏", 28, 20, packageId = pkg),
+            QuestTemplate(QuestCategory.STUDY, 3, "كتابة ملاحظات 15 دقيقة", "📝", 32, 900, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 900),
+            QuestTemplate(QuestCategory.STUDY, 4, "كتلة عمل عميق 45 دقيقة", "🧠", 46, 2700, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 2700),
+            // Hydration (5)
+            QuestTemplate(QuestCategory.HYDRATION, 1, "اشرب 4 أكواب ماء", "💧", 16, 4, isPinned = true, packageId = pkg),
+            QuestTemplate(QuestCategory.HYDRATION, 2, "ماء قبل الوجبات", "🥤", 22, 3, packageId = pkg),
+            QuestTemplate(QuestCategory.HYDRATION, 2, "تتبع الماء اليومي", "📏", 24, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.HYDRATION, 3, "ترطيب + مشي 10 دقائق", "🚰", 32, 600, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 600),
+            QuestTemplate(QuestCategory.HYDRATION, 3, "مشي 2500 متر", "🛣️", 34, 2500, packageId = pkg, objectiveType = QuestObjectiveType.HEALTH, healthMetric = "distance_m", healthAggregation = "daily_total"),
+            // Discipline (5)
+            QuestTemplate(QuestCategory.DISCIPLINE, 1, "رتب السرير", "🛏️", 14, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.DISCIPLINE, 1, "تنظيف مركز 15 دقيقة", "🧹", 24, 900, isPinned = true, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 900),
+            QuestTemplate(QuestCategory.DISCIPLINE, 2, "تنظيم منطقة واحدة", "📦", 22, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.DISCIPLINE, 3, "إيقاف الهاتف 30 دقيقة", "📵", 32, 1800, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 1800),
+            QuestTemplate(QuestCategory.DISCIPLINE, 4, "مشي سريع 20 دقيقة", "⚡", 44, 1200, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 1200),
+            // Mind (5)
+            QuestTemplate(QuestCategory.MIND, 1, "تسجيل يومي قصير", "📖", 14, 1, isPinned = true, packageId = pkg),
+            QuestTemplate(QuestCategory.MIND, 2, "تنفس واعي 8 دقائق", "🌬️", 24, 480, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 480),
+            QuestTemplate(QuestCategory.MIND, 2, "رسالة امتنان", "🙏", 20, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.MIND, 3, "تأمل 15 دقيقة", "🧘", 32, 900, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 900),
+            QuestTemplate(QuestCategory.MIND, 4, "متوسط نبض هادئ", "❤️", 44, 90, packageId = pkg, objectiveType = QuestObjectiveType.HEALTH, healthMetric = "heart_rate", healthAggregation = "daily_avg")
         )
     } else {
         listOf(
-            ShopItem("shop_apple", "Apple", "\uD83C\uDF4E", "Simple snack reward", 5, 5, 5, true),
-            ShopItem("shop_coffee", "Coffee Break", "\u2615", "Take a relaxing coffee break", 15, 3, 3, true)
+            // Fitness (5)
+            QuestTemplate(QuestCategory.FITNESS, 1, "Light walk 1 km", "🚶", 24, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.FITNESS, 1, "Run 12 minutes", "🏃", 34, 720, isPinned = true, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 720),
+            QuestTemplate(QuestCategory.FITNESS, 3, "Step goal hit", "👟", 32, 6000, packageId = pkg, objectiveType = QuestObjectiveType.HEALTH, healthMetric = "steps", healthAggregation = "daily_total"),
+            QuestTemplate(QuestCategory.FITNESS, 2, "Mobility stretch 10 min", "🤸", 26, 600, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 600),
+            QuestTemplate(QuestCategory.FITNESS, 4, "Burn 300 kcal", "🔥", 46, 300, packageId = pkg, objectiveType = QuestObjectiveType.HEALTH, healthMetric = "calories_kcal", healthAggregation = "daily_total"),
+            // Study (5)
+            QuestTemplate(QuestCategory.STUDY, 1, "Focused reading session", "📚", 24, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.STUDY, 1, "Focus sprint 25 min", "⏱️", 34, 1500, isPinned = true, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 1500),
+            QuestTemplate(QuestCategory.STUDY, 2, "Review 20 flashcards", "🃏", 28, 20, packageId = pkg),
+            QuestTemplate(QuestCategory.STUDY, 3, "Write notes 15 min", "📝", 32, 900, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 900),
+            QuestTemplate(QuestCategory.STUDY, 4, "Deep work block 45 min", "🧠", 46, 2700, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 2700),
+            // Hydration (5)
+            QuestTemplate(QuestCategory.HYDRATION, 1, "Drink 4 cups of water", "💧", 16, 4, isPinned = true, packageId = pkg),
+            QuestTemplate(QuestCategory.HYDRATION, 2, "Water before meals", "🥤", 22, 3, packageId = pkg),
+            QuestTemplate(QuestCategory.HYDRATION, 2, "Track hydration check-in", "📏", 24, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.HYDRATION, 3, "Hydrate + walk 10 min", "🚰", 32, 600, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 600),
+            QuestTemplate(QuestCategory.HYDRATION, 3, "Walk distance 2500 m", "🛣️", 34, 2500, packageId = pkg, objectiveType = QuestObjectiveType.HEALTH, healthMetric = "distance_m", healthAggregation = "daily_total"),
+            // Discipline (5)
+            QuestTemplate(QuestCategory.DISCIPLINE, 1, "Make your bed", "🛏️", 14, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.DISCIPLINE, 1, "Focused cleanup 15 min", "🧹", 24, 900, isPinned = true, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 900),
+            QuestTemplate(QuestCategory.DISCIPLINE, 2, "Declutter one zone", "📦", 22, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.DISCIPLINE, 3, "Phone-off block 30 min", "📵", 32, 1800, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 1800),
+            QuestTemplate(QuestCategory.DISCIPLINE, 4, "Brisk walk 20 min", "⚡", 44, 1200, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 1200),
+            // Mind (5)
+            QuestTemplate(QuestCategory.MIND, 1, "Quick journal entry", "📖", 14, 1, isPinned = true, packageId = pkg),
+            QuestTemplate(QuestCategory.MIND, 2, "Mindful breathing 8 min", "🌬️", 24, 480, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 480),
+            QuestTemplate(QuestCategory.MIND, 2, "Send gratitude message", "🙏", 20, 1, packageId = pkg),
+            QuestTemplate(QuestCategory.MIND, 3, "Meditation 15 min", "🧘", 32, 900, packageId = pkg, objectiveType = QuestObjectiveType.TIMER, targetSeconds = 900),
+            QuestTemplate(QuestCategory.MIND, 4, "Calm heart-rate average", "❤️", 44, 90, packageId = pkg, objectiveType = QuestObjectiveType.HEALTH, healthMetric = "heart_rate", healthAggregation = "daily_avg")
         )
     }
+    return GameTemplate(
+        templateName = localize(lang, "Quest Feature Test Pack", AppLanguage.AR to "حزمة اختبار ميزات المهام"),
+        appTheme = AppTheme.DEFAULT,
+        dailyQuests = daily,
+        mainQuests = emptyList(),
+        shopItems = getDefaultShopItems(lang),
+        packageId = pkg,
+        templateSettings = TemplateSettings(customMode = true, advancedOptions = true, alwaysShowQuestProgress = true)
+    )
 }
 
 fun getStarterCommunityPosts(lang: String = "en"): List<CommunityPost> {
     val now = System.currentTimeMillis()
-    val isAr = lang == "ar"
     return listOf(
         CommunityPost(
             authorId = "system_builder",
-            authorName = if (isAr) "بناء النقابة" else "Guild Builder",
-            title = if (isAr) "حزمة المغامر المبتدئ" else "Starter Adventurer Pack",
-            description = if (isAr) "عادات يومية متوازنة ومهام أساسية مناسبة للمبتدئين." else "Balanced daily habits and beginner-friendly main quests.",
+            authorName = localize(lang, "Guild Builder", AppLanguage.AR to "بناء النقابة"),
+            title = localize(lang, "Starter Adventurer Pack", AppLanguage.AR to "حزمة المغامر المبتدئ"),
+            description = localize(
+                lang,
+                "Balanced daily habits and beginner-friendly main quests.",
+                AppLanguage.AR to "عادات يومية متوازنة ومهام أساسية مناسبة للمبتدئين."
+            ),
             tags = listOf("starter", "balanced", "habits"),
             template = getDefaultGameTemplate(lang),
             createdAtMillis = now - 1000L * 60L * 60L * 24L * 2L,
@@ -1074,9 +1204,13 @@ fun getStarterCommunityPosts(lang: String = "en"): List<CommunityPost> {
         ),
         CommunityPost(
             authorId = "system_saitama",
-            authorName = if (isAr) "نادي كسر الحدود" else "Limit Break Club",
-            title = if (isAr) "تحدي كاسر الحدود" else "Limit Breaker Challenge",
-            description = if (isAr) "طحن لياقة بدنية عالي الانضباط مستوحى من أقواس تدريب الأبطال." else "High-discipline fitness grind inspired by hero training arcs.",
+            authorName = localize(lang, "Limit Break Club", AppLanguage.AR to "نادي كسر الحدود"),
+            title = localize(lang, "Limit Breaker Challenge", AppLanguage.AR to "تحدي كاسر الحدود"),
+            description = localize(
+                lang,
+                "High-discipline fitness grind inspired by hero training arcs.",
+                AppLanguage.AR to "طحن لياقة بدنية عالي الانضباط مستوحى من أقواس تدريب الأبطال."
+            ),
             tags = listOf("fitness", "hardcore", "discipline"),
             template = getLimitBreakerTemplate(lang),
             createdAtMillis = now - 1000L * 60L * 60L * 14L,
@@ -1086,3 +1220,4 @@ fun getStarterCommunityPosts(lang: String = "en"): List<CommunityPost> {
         )
     )
 }
+

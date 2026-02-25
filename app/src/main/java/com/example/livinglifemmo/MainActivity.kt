@@ -102,6 +102,14 @@ fun AppRoot(appContext: Context) {
     val systemPrefersDark = androidx.compose.foundation.isSystemInDarkTheme()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val snackbarHostState = remember { SnackbarHostState() }
+    fun getString(resId: Int, vararg formatArgs: Any): String = appContext.getString(resId, *formatArgs)
+    fun categoryLabel(cat: QuestCategory): String = when (cat) {
+        QuestCategory.FITNESS -> getString(R.string.cat_fitness)
+        QuestCategory.STUDY -> getString(R.string.cat_study)
+        QuestCategory.HYDRATION -> getString(R.string.cat_hydration)
+        QuestCategory.DISCIPLINE -> getString(R.string.cat_discipline)
+        QuestCategory.MIND -> getString(R.string.cat_mind)
+    }
 
     var screen by rememberSaveable { mutableStateOf(Screen.HOME) }
     var swipeVisualProgress by remember { mutableFloatStateOf(0f) }
@@ -435,6 +443,8 @@ fun AppRoot(appContext: Context) {
         if (!clearExisting) return
         if (packageId == REAL_DAILY_LIFE_PACKAGE_ID) {
             dailyQuestTarget = 5
+        } else if (packageId == QUEST_FEATURE_TEST_PACKAGE_ID) {
+            dailyQuestTarget = 5
         }
     }
 
@@ -581,15 +591,31 @@ fun AppRoot(appContext: Context) {
         scope.launch { appContext.dataStore.edit { p -> p[Keys.COMMUNITY_MY_RATINGS] = serializeRatingsMap(map) } }
     }
 
+    fun sanitizeHealthSnapshot(snapshot: HealthDailySnapshot): HealthDailySnapshot {
+        val safeDistance = if (snapshot.distanceMeters.isFinite()) snapshot.distanceMeters else 0f
+        val safeCalories = if (snapshot.caloriesKcal.isFinite()) snapshot.caloriesKcal else 0f
+        return snapshot.copy(
+            steps = snapshot.steps.coerceAtLeast(0),
+            avgHeartRate = snapshot.avgHeartRate?.coerceIn(0, 260),
+            distanceMeters = safeDistance.coerceIn(0f, 1_000_000f),
+            caloriesKcal = safeCalories.coerceIn(0f, 100_000f)
+        )
+    }
+
     fun persistHealthDailySnapshot(snapshot: HealthDailySnapshot?) {
-        healthDailySnapshot = snapshot
+        val safeSnapshot = snapshot?.let(::sanitizeHealthSnapshot)
+        healthDailySnapshot = safeSnapshot
         scope.launch {
-            appContext.dataStore.edit { p ->
-                if (snapshot == null) {
-                    p.remove(Keys.HEALTH_DAILY_SNAPSHOT)
-                } else {
-                    p[Keys.HEALTH_DAILY_SNAPSHOT] = Gson().toJson(snapshot)
+            runCatching {
+                appContext.dataStore.edit { p ->
+                    if (safeSnapshot == null) {
+                        p.remove(Keys.HEALTH_DAILY_SNAPSHOT)
+                    } else {
+                        p[Keys.HEALTH_DAILY_SNAPSHOT] = Gson().toJson(safeSnapshot)
+                    }
                 }
+            }.onFailure { err ->
+                AppLog.w("persist_health_snapshot_failed", err)
             }
         }
     }
@@ -604,18 +630,88 @@ fun AppRoot(appContext: Context) {
         }
     }
 
-    fun syncHealthObjectiveQuestProgress(snapshot: HealthDailySnapshot?) {
+    fun syncHealthObjectiveQuestProgress(
+        snapshot: HealthDailySnapshot?,
+        startedQuestId: Int? = null
+    ) {
         if (snapshot == null) return
         val updated = quests.map { q ->
             if (q.completed || q.objectiveType != QuestObjectiveType.HEALTH) return@map q
+            val metric = q.healthMetric?.trim()?.lowercase(Locale.getDefault())
             val value = metricValueForQuest(snapshot, q.healthMetric).coerceAtLeast(0)
             val target = q.target.coerceAtLeast(1)
-            val mapped = if (value >= target) target + 1 else value
-            if (mapped == q.currentProgress) q else q.copy(currentProgress = mapped)
+            val mapped = when (metric) {
+                // Heart-rate goals are threshold goals: lower/equal target is success.
+                "heart_rate" -> if (value > 0 && value <= target) target + 1 else 0
+                else -> if (value >= target) target + 1 else value
+            }
+            val effective = when {
+                mapped > 0 -> mapped
+                q.id == startedQuestId -> 1
+                q.currentProgress > 0 -> 1
+                else -> 0
+            }
+            if (effective == q.currentProgress) q else q.copy(currentProgress = effective)
         }
         if (updated != quests) {
             quests = updated
+            val completedIds = updated.filter { it.completed }.map { it.id }.toSet()
+            val base = updated.map { it.copy(completed = false) }
+            scope.launch {
+                runCatching {
+                    appContext.dataStore.edit { p ->
+                        p[Keys.LAST_DAY] = lastDayEpoch
+                        p[Keys.QUESTS] = serializeQuests(base)
+                        p[Keys.COMPLETED] = completedIds.joinToString(",")
+                        p[Keys.EARNED] = earnedIds.joinToString(",")
+                        p[Keys.REFRESH_COUNT] = refreshCount
+                    }
+                }.onFailure { err ->
+                    AppLog.w("persist_health_progress_failed", err)
+                }
+            }
         }
+    }
+
+    fun clampHealthTarget(metric: String?, value: Int): Int {
+        return when (metric?.trim()?.lowercase(Locale.getDefault())) {
+            "steps" -> value.coerceIn(100, 50000)
+            "heart_rate" -> value.coerceIn(40, 220)
+            "distance_m" -> value.coerceIn(100, 50000)
+            "calories_kcal" -> value.coerceIn(50, 5000)
+            else -> value.coerceAtLeast(1)
+        }
+    }
+
+    fun sanitizeHealthTemplateOrNull(template: CustomTemplate): CustomTemplate? {
+        if (template.objectiveType != QuestObjectiveType.HEALTH) return template
+        val metric = template.healthMetric?.trim()?.lowercase(Locale.getDefault())
+        if (metric !in setOf("steps", "heart_rate", "distance_m", "calories_kcal")) {
+            AppLog.w("Dropped invalid HEALTH template id=${template.id} title=${template.title} metric=${template.healthMetric}")
+            return null
+        }
+        val safeTarget = clampHealthTarget(metric, template.target)
+        return template.copy(
+            target = safeTarget,
+            healthMetric = metric,
+            healthAggregation = template.healthAggregation ?: if (metric == "heart_rate") "daily_avg" else "daily_total"
+        )
+    }
+
+    fun sanitizeHealthQuestOrNull(quest: Quest): Quest? {
+        if (quest.objectiveType != QuestObjectiveType.HEALTH) return quest
+        val metric = quest.healthMetric?.trim()?.lowercase(Locale.getDefault())
+        if (metric !in setOf("steps", "heart_rate", "distance_m", "calories_kcal")) {
+            AppLog.w("Dropped invalid HEALTH quest id=${quest.id} title=${quest.title} metric=${quest.healthMetric}")
+            return null
+        }
+        val safeTarget = clampHealthTarget(metric, quest.target)
+        return quest.copy(
+            target = safeTarget,
+            currentProgress = quest.currentProgress.coerceIn(0, safeTarget + 1),
+            healthMetric = metric,
+            healthAggregation = quest.healthAggregation ?: if (metric == "heart_rate") "daily_avg" else "daily_total"
+        )
     }
 
     fun persistCommunitySyncQueue(list: List<CommunitySyncTask>) {
@@ -749,7 +845,7 @@ fun AppRoot(appContext: Context) {
             if (ok) {
                 refreshCommunityComments(listOf(postId))
             } else {
-                snackbarHostState.showSnackbar("Comment failed to post.")
+                snackbarHostState.showSnackbar(getString(R.string.snackbar_comment_failed))
             }
         }
     }
@@ -761,7 +857,7 @@ fun AppRoot(appContext: Context) {
             if (ok) {
                 refreshCommunityComments(listOf(postId))
             } else {
-                snackbarHostState.showSnackbar("Vote failed.")
+                snackbarHostState.showSnackbar(getString(R.string.snackbar_vote_failed))
             }
         }
     }
@@ -773,7 +869,7 @@ fun AppRoot(appContext: Context) {
             communityRefreshInProgress = true
             val failureMessage = runCatching { syncCommunityFromRemote() }
                 .exceptionOrNull()
-                ?.let { "Refresh failed. Using local data." }
+                ?.let { getString(R.string.snackbar_community_offline) }
             val elapsed = System.currentTimeMillis() - startedAt
             val minVisibleMs = 900L
             if (elapsed < minVisibleMs) delay(minVisibleMs - elapsed)
@@ -849,7 +945,9 @@ fun AppRoot(appContext: Context) {
         streak = getInt("streak", streak)
         bestStreak = getInt("bestStreak", bestStreak)
         val importedCompleted = parseIds(dump["completed"])
-        quests = deserializeQuests(dump["quests"].orEmpty()).map { q ->
+        val importedDecoded = deserializeQuests(dump["quests"].orEmpty())
+            .mapNotNull(::sanitizeHealthQuestOrNull)
+        quests = ensureUniqueQuestIds(importedDecoded).map { q ->
             if (importedCompleted.contains(q.id)) q.copy(completed = true) else q
         }
         val importedEarned = parseIds(dump["earned"])
@@ -972,7 +1070,7 @@ fun AppRoot(appContext: Context) {
         if (!cloudSyncEnabled) return
         if (cloudConnectedAccount == null) {
             if (force) {
-                scope.launch { snackbarHostState.showSnackbar("Connect Google Drive first.") }
+                scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_google_drive_first)) }
             }
             return
         }
@@ -981,7 +1079,7 @@ fun AppRoot(appContext: Context) {
         cloudLastAutoAttemptAt = now
         val snapshot = exportBackupPayload()
         if (snapshot.isBlank()) {
-            scope.launch { snackbarHostState.showSnackbar("Cloud sync failed: backup empty.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_cloud_sync_empty)) }
             return
         }
         scope.launch {
@@ -994,31 +1092,31 @@ fun AppRoot(appContext: Context) {
                     p[Keys.CLOUD_ACCOUNT_EMAIL] = cloudAccountEmail
                     p[Keys.CLOUD_LAST_SYNC_AT] = cloudLastSyncAt
                 }
-                snackbarHostState.showSnackbar("Cloud backup synced.")
+                snackbarHostState.showSnackbar(getString(R.string.snackbar_cloud_backup_synced))
             } else {
-                snackbarHostState.showSnackbar("Cloud sync failed. Check Google account/permission.")
+                snackbarHostState.showSnackbar(getString(R.string.snackbar_cloud_sync_failed))
             }
         }
     }
 
     fun restoreFromCloud() {
         if (!cloudSyncEnabled || cloudConnectedAccount == null) {
-            scope.launch { snackbarHostState.showSnackbar("Connect Google Drive first.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_google_drive_first)) }
             return
         }
         scope.launch {
             val payload = GoogleDriveSync.downloadBackup(appContext)
             if (payload.isNullOrBlank()) {
-                snackbarHostState.showSnackbar("No cloud backup found for this account.")
+                snackbarHostState.showSnackbar(getString(R.string.snackbar_no_cloud_backup))
                 return@launch
             }
             val ok = importBackupPayload(payload)
             if (ok) {
                 cloudLastSyncAt = System.currentTimeMillis()
                 appContext.dataStore.edit { p -> p[Keys.CLOUD_LAST_SYNC_AT] = cloudLastSyncAt }
-                snackbarHostState.showSnackbar("Cloud backup restored.")
+                snackbarHostState.showSnackbar(getString(R.string.snackbar_cloud_restored))
             } else {
-                snackbarHostState.showSnackbar("Cloud backup restore failed.")
+                snackbarHostState.showSnackbar(getString(R.string.snackbar_cloud_restore_failed))
             }
         }
     }
@@ -1045,47 +1143,50 @@ fun AppRoot(appContext: Context) {
                 p[Keys.CLOUD_SYNC_ENABLED] = true
                 p[Keys.CLOUD_ACCOUNT_EMAIL] = cloudAccountEmail
             }
-            snackbarHostState.showSnackbar("Google cloud connected.")
+            snackbarHostState.showSnackbar(getString(R.string.snackbar_google_cloud_connected))
         }
     }
 
-    fun shareFeedbackReport(category: String = "General", message: String = "") {
+    fun shareFeedbackReport(category: String = "", message: String = "") {
+        val resolvedCategory = category.ifBlank { getString(R.string.feedback_general) }
+        val premiumLabel = if (premiumUnlocked) getString(R.string.on_label) else getString(R.string.off_label)
+        val cloudSyncLabel = if (cloudSyncEnabled) getString(R.string.on_label) else getString(R.string.off_label)
         val report = buildString {
-            appendLine("Questify Feedback")
-            appendLine("User: $communityUserName ($communityUserId)")
-            appendLine("Category: $category")
-            appendLine("Level: $currentLevel")
-            appendLine("Theme: ${appTheme.name}")
-            appendLine("Premium: $premiumUnlocked")
-            appendLine("Cloud sync: $cloudSyncEnabled")
-            appendLine("Queue pending: ${pendingCommunitySyncQueue.size}")
+            appendLine(getString(R.string.feedback_report_title))
+            appendLine(getString(R.string.feedback_report_user, communityUserName, communityUserId))
+            appendLine(getString(R.string.feedback_report_category, resolvedCategory))
+            appendLine(getString(R.string.feedback_report_level, currentLevel))
+            appendLine(getString(R.string.feedback_report_theme, appTheme.name))
+            appendLine(getString(R.string.feedback_report_premium, premiumLabel))
+            appendLine(getString(R.string.feedback_report_cloud_sync, cloudSyncLabel))
+            appendLine(getString(R.string.feedback_report_queue_pending, pendingCommunitySyncQueue.size))
             if (message.isNotBlank()) {
                 appendLine()
-                appendLine("Message:")
+                appendLine(getString(R.string.feedback_report_message_label))
                 appendLine(message)
             }
             appendLine()
-            appendLine("Recent Logs:")
-            appendLine(AppLog.exportRecentLogs().ifBlank { "No logs captured." })
+            appendLine(getString(R.string.feedback_report_logs_label))
+            appendLine(AppLog.exportRecentLogs().ifBlank { getString(R.string.feedback_report_no_logs) })
         }
         scope.launch {
             val pushed = SupabaseApi.submitFeedbackInbox(
                 userId = communityUserId.ifBlank { UUID.randomUUID().toString() },
                 userName = communityUserName.ifBlank { "Player" },
-                category = category,
+                category = resolvedCategory,
                 message = message.ifBlank { report },
                 appTheme = appTheme.name,
                 level = currentLevel
             )
             if (pushed) {
-                snackbarHostState.showSnackbar("Feedback sent.")
+                snackbarHostState.showSnackbar(getString(R.string.snackbar_feedback_sent))
             } else {
                 val intent = Intent().apply {
                     action = Intent.ACTION_SEND
                     putExtra(Intent.EXTRA_TEXT, report)
                     type = "text/plain"
                 }
-                appContext.startActivity(Intent.createChooser(intent, "Send Feedback"))
+                appContext.startActivity(Intent.createChooser(intent, getString(R.string.settings_send_feedback)))
             }
         }
     }
@@ -1112,7 +1213,7 @@ fun AppRoot(appContext: Context) {
         if (newlyUnlocked) {
             unlockedAchievementIds = currentUnlocked
             SoundManager.playSuccess()
-            scope.launch { snackbarHostState.showSnackbar("New Achievement Unlocked!") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_achievement_unlocked)) }
             scope.launch { appContext.dataStore.edit { p -> p[Keys.ACHIEVEMENTS] = currentUnlocked.joinToString(";;") { "$it|1" } } }
         }
     }
@@ -1367,7 +1468,9 @@ fun AppRoot(appContext: Context) {
         authUserEmail = prefs[Keys.AUTH_USER_EMAIL].orEmpty()
         authUserId = prefs[Keys.AUTH_USER_ID].orEmpty()
         isLoggedIn = prefs[Keys.AUTH_PROVIDER].orEmpty().isNotBlank() && authAccessToken.isNotBlank()
-        healthDailySnapshot = runCatching { Gson().fromJson(prefs[Keys.HEALTH_DAILY_SNAPSHOT].orEmpty(), HealthDailySnapshot::class.java) }.getOrNull()
+        healthDailySnapshot = runCatching { Gson().fromJson(prefs[Keys.HEALTH_DAILY_SNAPSHOT].orEmpty(), HealthDailySnapshot::class.java) }
+            .getOrNull()
+            ?.let(::sanitizeHealthSnapshot)
         val savedLang = prefs[Keys.APP_LANGUAGE].orEmpty().ifBlank { "system" }
         appLanguage = savedLang
         appContext.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
@@ -1402,7 +1505,20 @@ fun AppRoot(appContext: Context) {
         }
 
         val storedCustom = prefs[Keys.CUSTOM_TEMPLATES].orEmpty()
-        if (storedCustom.isBlank()) { val defaults = getInitialDefaultPool(); customTemplates = defaults; persistCustomTemplates(defaults) } else { customTemplates = deserializeCustomTemplates(storedCustom) }
+        if (storedCustom.isBlank()) {
+            val defaults = getInitialDefaultPool()
+            customTemplates = defaults
+            persistCustomTemplates(defaults)
+        } else {
+            val decoded = deserializeCustomTemplates(storedCustom)
+            val safe = decoded.mapNotNull(::sanitizeHealthTemplateOrNull)
+            val droppedCount = decoded.size - safe.size
+            customTemplates = safe
+            if (droppedCount > 0) {
+                AppLog.w("Sanitized $droppedCount invalid health template(s) on load")
+                persistCustomTemplates(safe)
+            }
+        }
 
 // Load Main Quests
         val rawMQ = prefs[Keys.MAIN_QUESTS].orEmpty()
@@ -1483,7 +1599,16 @@ fun AppRoot(appContext: Context) {
 
         val storedDay = prefs[Keys.LAST_DAY] ?: currentEpochDay(); val storedQuestsSer = prefs[Keys.QUESTS]; val storedCompletedSer = prefs[Keys.COMPLETED]; val storedEarnedSer = prefs[Keys.EARNED]; val storedRefresh = prefs[Keys.REFRESH_COUNT] ?: 0; val nowDay = currentEpochDay()
 
-        val storedBase = if (!storedQuestsSer.isNullOrBlank()) deserializeQuests(storedQuestsSer) else emptyList()
+        val storedBase = if (!storedQuestsSer.isNullOrBlank()) {
+            val decoded = deserializeQuests(storedQuestsSer)
+            val safe = decoded.mapNotNull(::sanitizeHealthQuestOrNull)
+            val unique = ensureUniqueQuestIds(safe)
+            val droppedCount = decoded.size - safe.size
+            if (droppedCount > 0) {
+                AppLog.w("Sanitized $droppedCount invalid health quest(s) on load")
+            }
+            unique
+        } else emptyList()
         val storedCompleted = parseIds(storedCompletedSer); val storedEarned = parseIds(storedEarnedSer)
         val storedFull = storedBase.map { q -> if (storedCompleted.contains(q.id)) q.copy(completed = true) else q }
 
@@ -1542,7 +1667,7 @@ fun AppRoot(appContext: Context) {
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode != Activity.RESULT_OK) {
-            scope.launch { snackbarHostState.showSnackbar("Google sign-in canceled.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_google_signin_canceled)) }
             return@rememberLauncherForActivityResult
         }
         val task = com.google.android.gms.auth.api.signin.GoogleSignIn.getSignedInAccountFromIntent(result.data)
@@ -1550,7 +1675,7 @@ fun AppRoot(appContext: Context) {
             val account = task.getResult(com.google.android.gms.common.api.ApiException::class.java)
             val idToken = account?.idToken
             if (idToken.isNullOrBlank()) {
-                scope.launch { snackbarHostState.showSnackbar("Failed to get Google ID token.") }
+                scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_google_id_token_failed)) }
                 return@rememberLauncherForActivityResult
             }
             scope.launch {
@@ -1575,14 +1700,14 @@ fun AppRoot(appContext: Context) {
             }
         } catch (e: Exception) {
             AppLog.w("Auth Google sign-in failed.", e)
-            scope.launch { snackbarHostState.showSnackbar("Google sign-in failed.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_google_signin_failed)) }
         }
     }
 
     fun performGoogleLogin() {
         val webClientId = BuildConfig.GOOGLE_WEB_CLIENT_ID
         if (webClientId.isBlank()) {
-            scope.launch { snackbarHostState.showSnackbar("Google Web Client ID not configured.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_google_web_client_missing)) }
             return
         }
         val gso = com.google.android.gms.auth.api.signin.GoogleSignInOptions.Builder(
@@ -1606,14 +1731,14 @@ fun AppRoot(appContext: Context) {
             authUserId = ""
             isLoggedIn = false
             persistSettings()
-            snackbarHostState.showSnackbar("Signed out.")
+            snackbarHostState.showSnackbar(getString(R.string.snackbar_signed_out))
         }
     }
 
     LaunchedEffect(Unit) {
         load()
         if (schemaDowngradeDetected) {
-            scope.launch { snackbarHostState.showSnackbar("Data schema is newer than this app build.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_data_schema_newer)) }
         }
         delay(700)
         showIntroSplash = false
@@ -1621,7 +1746,7 @@ fun AppRoot(appContext: Context) {
             syncCommunityFromRemote()
         }.onFailure {
             AppLog.w("Community sync failed during startup; using local cache.", it)
-            scope.launch { snackbarHostState.showSnackbar("Community sync offline. Using local data.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_community_offline)) }
         }
         if (cloudSyncEnabled && cloudConnectedAccount != null) {
             triggerCloudSnapshotSync(force = false)
@@ -1641,7 +1766,7 @@ fun AppRoot(appContext: Context) {
                 val templateData = dataUri?.getQueryParameter("data")
                 if (!templateData.isNullOrBlank()) {
                     if (templateData.length > 250_000) {
-                        snackbarHostState.showSnackbar("Template link too large.")
+                        snackbarHostState.showSnackbar(getString(R.string.snackbar_template_link_too_large))
                     } else {
                         try {
                             val decoded = runCatching {
@@ -1651,11 +1776,11 @@ fun AppRoot(appContext: Context) {
                             if (template != null) {
                                 pendingImportTemplate = template
                             } else {
-                                snackbarHostState.showSnackbar("Template link is invalid or too large.")
+                                snackbarHostState.showSnackbar(getString(R.string.snackbar_template_link_invalid))
                             }
                         } catch (e: Exception) {
                             AppLog.e("Failed to parse incoming template link.", e)
-                            snackbarHostState.showSnackbar("Failed to read template link.")
+                            snackbarHostState.showSnackbar(getString(R.string.snackbar_read_template_failed))
                         }
                     }
                 }
@@ -1699,7 +1824,7 @@ fun AppRoot(appContext: Context) {
         val today = currentEpochDay()
         if (today != lastDayEpoch && quests.isNotEmpty()) { finalizePreviousDayIfNeeded(lastDayEpoch, today, quests) }
         regenerateForDay(today)
-        scope.launch { snackbarHostState.showSnackbar("Start of a new day!") }
+        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_new_day_started)) }
     }
 
     fun cloneTemplateForLibrary(template: GameTemplate, newName: String): GameTemplate {
@@ -1744,20 +1869,63 @@ TASK:
 - {{THEME_POLICY_GOAL}}
 - Keep the file import-compatible for Questify.
 
-RULES:
+STRICT OUTPUT CONTRACT:
 1) Output valid JSON only (no markdown, no commentary).
-2) Keep required top-level keys: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.
-3) Categories allowed: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.
-4) daily_quests: difficulty 1..5, xp 10..300, target >= 1, objective_type COUNT|TIMER|HEALTH.
-   - TIMER: target_seconds 30..86400.
-   - HEALTH: health_metric in steps|heart_rate|distance_m|calories_kcal.
-5) If category/tier distribution is not requested, keep it near-balanced across all 5 categories and tiers 1..5.
-6) main_quests: unique ref, prerequisite_ref null or existing ref, 2..8 concise steps, xp_reward 100..5000.
-   - Numbered chains in same family should have non-decreasing xp_reward.
-7) shop_items (optional): concise name/description, emoji icon, balanced economy, stock/max_stock 0..99, max_stock >= stock.
-8) Hard caps (TOTAL counts): daily_quests <= $advancedDailyImportLimit, main_quests <= $advancedMainImportLimit, shop_items <= $advancedShopImportLimit.
-9) {{THEME_POLICY_RULE}}
-10) ai_instructions and guide are optional in final output.
+2) Return ONE full JSON object (not partial patches).
+3) Keep required top-level keys: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.
+
+SCHEMA RULES:
+4) Categories allowed: FITNESS, STUDY, HYDRATION, DISCIPLINE, MIND.
+5) daily_quests[] fields: title, category, difficulty, xp, target, icon, objective_type, optional pinned, image_uri.
+6) objective_type must be COUNT|TIMER|HEALTH.
+   - COUNT: target >= 1.
+   - TIMER: target_seconds required (30..86400). Set target = target_seconds for compatibility.
+   - HEALTH: health_metric required in steps|heart_rate|distance_m|calories_kcal.
+     health_aggregation optional (prefer daily_total, use daily_avg for heart_rate when requested).
+7) main_quests[] fields: ref, title, description, xp_reward, steps[], prerequisite_ref, optional icon/image_uri.
+   - ref must be unique.
+   - prerequisite_ref must be null or an existing ref.
+   - steps count: 2..8 concise items.
+   - xp_reward range: 100..5000.
+8) shop_items[] is optional: id, name, icon, description, cost, stock, max_stock, consumable, optional image_uri.
+   - stock/max_stock range 0..99 and max_stock >= stock.
+9) If distribution is not specified, keep daily_quests near-balanced across all 5 categories and tiers 1..5.
+10) Hard caps (TOTAL counts): daily_quests <= $advancedDailyImportLimit, main_quests <= $advancedMainImportLimit, shop_items <= $advancedShopImportLimit.
+11) {{THEME_POLICY_RULE}}
+12) ai_instructions and guide are optional in final output.
+
+REFERENCE SHAPE (keep names exactly):
+{
+  "schema_version": 2,
+  "template_name": "Name",
+  "app_theme": "DEFAULT",
+  "accent_argb": 4283215696,
+  "daily_quests": [
+    {
+      "title": "Run 20 minutes",
+      "category": "FITNESS",
+      "difficulty": 2,
+      "xp": 28,
+      "target": 1200,
+      "icon": "🏃",
+      "objective_type": "TIMER",
+      "target_seconds": 1200
+    },
+    {
+      "title": "Hit 7000 steps",
+      "category": "FITNESS",
+      "difficulty": 2,
+      "xp": 24,
+      "target": 7000,
+      "icon": "👟",
+      "objective_type": "HEALTH",
+      "health_metric": "steps",
+      "health_aggregation": "daily_total"
+    }
+  ],
+  "main_quests": [],
+  "shop_items": []
+}
 
 FINAL OUTPUT:
 - Return the full updated JSON file only.
@@ -1773,7 +1941,10 @@ FINAL OUTPUT:
             ai_instructions = listOf(
                 "This JSON file is from Questify.",
                 "Read USER REQUEST first, then update daily_quests/main_quests/shop_items.",
+                "Return ONE valid JSON object only.",
                 "Keep required keys: schema_version, template_name, app_theme, accent_argb, daily_quests, main_quests.",
+                "For TIMER quests set target_seconds and set target to the same value.",
+                "For HEALTH quests set health_metric and optional health_aggregation.",
                 "Follow prompt limits/rules; return JSON only."
             ),
             guide = AdvancedTemplateGuide(
@@ -1792,8 +1963,21 @@ FINAL OUTPUT:
             ),
             template_settings = starterSettings,
             daily_quests = listOf(
-                AdvancedDailyQuestEntry(title = "Morning walk 20 min", category = QuestCategory.FITNESS.name, difficulty = 2, xp = 20, target = 1, icon = "🚶", objective_type = "HEALTH", health_metric = "steps", health_aggregation = "daily_total"),
-                AdvancedDailyQuestEntry(title = "Deep work session", category = QuestCategory.STUDY.name, difficulty = 3, xp = 35, target = 1, icon = "🧠", objective_type = "TIMER", target_seconds = 3600)
+                // FITNESS
+                AdvancedDailyQuestEntry(title = "Run 20 minutes", category = QuestCategory.FITNESS.name, difficulty = 2, xp = 28, target = 1200, icon = "🏃", objective_type = "TIMER", target_seconds = 1200),
+                AdvancedDailyQuestEntry(title = "Hit 7000 steps", category = QuestCategory.FITNESS.name, difficulty = 2, xp = 24, target = 7000, icon = "👟", objective_type = "HEALTH", health_metric = "steps", health_aggregation = "daily_total"),
+                // STUDY
+                AdvancedDailyQuestEntry(title = "Deep work 45 min", category = QuestCategory.STUDY.name, difficulty = 3, xp = 40, target = 2700, icon = "🧠", objective_type = "TIMER", target_seconds = 2700),
+                AdvancedDailyQuestEntry(title = "Review 30 flashcards", category = QuestCategory.STUDY.name, difficulty = 2, xp = 24, target = 30, icon = "🃏", objective_type = "COUNT"),
+                // HYDRATION
+                AdvancedDailyQuestEntry(title = "Drink 8 cups water", category = QuestCategory.HYDRATION.name, difficulty = 2, xp = 20, target = 8, icon = "💧", objective_type = "COUNT"),
+                AdvancedDailyQuestEntry(title = "Walk 2500 meters", category = QuestCategory.HYDRATION.name, difficulty = 2, xp = 24, target = 2500, icon = "🛣️", objective_type = "HEALTH", health_metric = "distance_m", health_aggregation = "daily_total"),
+                // DISCIPLINE
+                AdvancedDailyQuestEntry(title = "Focused cleanup 15 min", category = QuestCategory.DISCIPLINE.name, difficulty = 2, xp = 24, target = 900, icon = "🧹", objective_type = "TIMER", target_seconds = 900),
+                AdvancedDailyQuestEntry(title = "Declutter one zone", category = QuestCategory.DISCIPLINE.name, difficulty = 2, xp = 20, target = 1, icon = "📦", objective_type = "COUNT"),
+                // MIND
+                AdvancedDailyQuestEntry(title = "Meditation 12 min", category = QuestCategory.MIND.name, difficulty = 2, xp = 24, target = 720, icon = "🧘", objective_type = "TIMER", target_seconds = 720),
+                AdvancedDailyQuestEntry(title = "Calm average heart rate", category = QuestCategory.MIND.name, difficulty = 3, xp = 30, target = 92, icon = "❤️", objective_type = "HEALTH", health_metric = "heart_rate", health_aggregation = "daily_avg")
             ),
             main_quests = listOf(
                 AdvancedMainQuestEntry(ref = "mq_1", title = "Build Consistency", description = "Finish 30 focused days in a row.", xp_reward = 400, steps = listOf("Week 1", "Week 2", "Week 3", "Week 4"), icon = "🏆"),
@@ -2085,17 +2269,17 @@ FINAL OUTPUT:
         val now = System.currentTimeMillis()
         val cooldownMs = 1000L * 60L * 3L
         if (now - lastCommunityPublishAt < cooldownMs) {
-            scope.launch { snackbarHostState.showSnackbar("Publishing cooldown active. Try again in a few minutes.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_publishing_cooldown)) }
             return
         }
         val recentBurstCount = communityPosts.count { it.authorId == communityUserId && now - it.createdAtMillis < (60L * 60L * 1000L) }
         if (recentBurstCount >= 5) {
-            scope.launch { snackbarHostState.showSnackbar("Publishing temporarily locked due to spam protection.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_publishing_locked)) }
             return
         }
         val rawTitle = title.trim()
         if (rawTitle.length < 3) {
-            scope.launch { snackbarHostState.showSnackbar("Title is too short.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_title_too_short)) }
             return
         }
         val cleanTitle = sanitizeCommunityText(rawTitle, 60)
@@ -2105,27 +2289,27 @@ FINAL OUTPUT:
         )
         val tags = sanitizeTags(tagsRaw.split(","))
         if (cleanDescription.length < 10) {
-            scope.launch { snackbarHostState.showSnackbar("Description is too short.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_description_too_short)) }
             return
         }
         if (tags.size > 8) {
-            scope.launch { snackbarHostState.showSnackbar("Use up to 8 tags.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_tags_limit)) }
             return
         }
         val tagRegex = Regex("^[a-zA-Z0-9 _-]{2,24}$")
         if (tags.any { !tagRegex.matches(it) }) {
-            scope.launch { snackbarHostState.showSnackbar("Tags contain unsupported characters.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_tags_invalid)) }
             return
         }
         if (hasSuspiciousCommunityContent(cleanTitle) || hasSuspiciousCommunityContent(cleanDescription) || tags.any { hasSuspiciousCommunityContent(it) }) {
-            scope.launch { snackbarHostState.showSnackbar("Publish blocked: unsafe content detected.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_unsafe_content)) }
             return
         }
         val duplicateExists = communityPosts.any {
             it.title.equals(cleanTitle, ignoreCase = true)
         }
         if (duplicateExists) {
-            scope.launch { snackbarHostState.showSnackbar("Challenge title already exists in community.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_title_duplicate)) }
             return
         }
         val baseTemplate = GameTemplate(
@@ -2140,7 +2324,7 @@ FINAL OUTPUT:
         val (safeBaseTemplate, baseTrust) = evaluateTemplateTrust(baseTemplate)
         val postTemplate = cloneTemplateForLibrary(safeBaseTemplate, cleanTitle)
         if (postTemplate.dailyQuests.isEmpty() && postTemplate.mainQuests.isEmpty() && postTemplate.shopItems.isEmpty()) {
-            scope.launch { snackbarHostState.showSnackbar("Nothing safe to publish in this template.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_nothing_safe_to_publish)) }
             return
         }
         val post = CommunityPost(
@@ -2155,7 +2339,7 @@ FINAL OUTPUT:
         persistCommunityPosts((listOf(post) + communityPosts).distinctBy { it.id })
         AppLog.event("publish", "title=${cleanTitle.take(24)}")
         lastCommunityPublishAt = now
-        scope.launch { snackbarHostState.showSnackbar("Challenge published!") }
+        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_challenge_published)) }
         scope.launch { appContext.dataStore.edit { p -> p[Keys.COMMUNITY_LAST_PUBLISH_AT] = now } }
         scope.launch {
             val ok = SupabaseApi.publishPost(post)
@@ -2206,7 +2390,7 @@ FINAL OUTPUT:
     fun onReportAuthor(authorId: String) {
         if (!isLoggedIn) { showLoginRequiredDialog = true; return }
         AppLog.w("Community report submitted for author=$authorId by user=$communityUserId")
-        scope.launch { snackbarHostState.showSnackbar("Report submitted.") }
+        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_report_submitted)) }
     }
 
     fun onRateCommunityPost(postId: String, starsRaw: Int) {
@@ -2244,7 +2428,7 @@ FINAL OUTPUT:
 
     fun onRemixCommunityPost(post: CommunityPost) {
         if (post.template.isPremium && !premiumUnlocked) {
-            scope.launch { snackbarHostState.showSnackbar("This is a premium template. Enable Creator Pass (beta) in Settings.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_premium_template)) }
             return
         }
         remixPostPending = post
@@ -2486,7 +2670,7 @@ FINAL OUTPUT:
         val (base, completedIds) = todayBaseAndCompleted()
         persistToday(lastDayEpoch, base, completedIds, earnedIds, refreshCount)
         updateHistory(lastDayEpoch, base, completedIds)
-        scope.launch { snackbarHostState.showSnackbar("Quest removed from today.") }
+        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_quest_removed)) }
     }
 
     fun onOpenQuestEditorFromHome(id: Int) {
@@ -2653,7 +2837,7 @@ FINAL OUTPUT:
             return
         }
         if (gold < item.cost) {
-            scope.launch { snackbarHostState.showSnackbar("Not enough Gold") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_not_enough_gold)) }
             return
         }
         gold -= item.cost
@@ -2670,7 +2854,7 @@ FINAL OUTPUT:
 
     fun onUpsertShopItem(item: ShopItem) {
         if (!customMode) {
-            scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_custom_mode_required)) }
             return
         }
         val cappedMax = item.maxStock.coerceAtLeast(1)
@@ -2680,12 +2864,12 @@ FINAL OUTPUT:
         val idx = list.indexOfFirst { it.id == sanitized.id }
         if (idx >= 0) list[idx] = sanitized else list.add(sanitized)
         persistShopItems(list)
-        scope.launch { snackbarHostState.showSnackbar("Shop item saved") }
+        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_shop_item_saved)) }
     }
 
     fun onDeleteShopItem(id: String) {
         if (!customMode) {
-            scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_custom_mode_required)) }
             return
         }
         val removed = shopItems.firstOrNull { it.id == id } ?: return
@@ -2712,7 +2896,7 @@ FINAL OUTPUT:
     fun onAddPlan(day: Long, text: String) {
         val clean = text.trim()
         if (clean.isBlank()) {
-            scope.launch { snackbarHostState.showSnackbar("Plan title required.") }
+            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_plan_title_required)) }
             return
         }
         val next = calendarPlans.toMutableMap()
@@ -2721,7 +2905,7 @@ FINAL OUTPUT:
         persistCalendarPlans(next)
         pushPlanStateToSupabase(next)
         AppLog.event("plan_add", "day=$day")
-        scope.launch { snackbarHostState.showSnackbar("Plan added") }
+        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_plan_added)) }
     }
 
     fun onDeletePlan(day: Long, index: Int) {
@@ -2733,7 +2917,7 @@ FINAL OUTPUT:
         persistCalendarPlans(next)
         pushPlanStateToSupabase(next)
         scope.launch {
-            val res = snackbarHostState.showSnackbar("Plan removed", actionLabel = "UNDO", duration = SnackbarDuration.Short)
+            val res = snackbarHostState.showSnackbar(getString(R.string.snackbar_plan_removed), actionLabel = getString(R.string.undo), duration = SnackbarDuration.Short)
             if (res == SnackbarResult.ActionPerformed) {
                 val restored = calendarPlans.toMutableMap()
                 val list = restored[day].orEmpty().toMutableList()
@@ -2767,7 +2951,7 @@ FINAL OUTPUT:
         }
 
         persistCustomTemplates(currentMap.values.toList())
-        scope.launch { snackbarHostState.showSnackbar("Quest pool updated. Tap 'Start New Day' to apply.") }
+        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_quest_pool_updated)) }
     }
     fun onRefreshTodayQuests() {
         if (homeRefreshInProgress) return
@@ -2833,7 +3017,7 @@ FINAL OUTPUT:
     }
 
     fun onDeleteMainQuest(id: String) {
-        persistMainQuests(mainQuests.filterNot { it.id == id }); scope.launch { snackbarHostState.showSnackbar("Deleted") }
+        persistMainQuests(mainQuests.filterNot { it.id == id }); scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_deleted)) }
     }
 
     fun onUpdateMainQuest(updated: CustomMainQuest) {
@@ -3018,7 +3202,7 @@ FINAL OUTPUT:
             customTemplatesToQuestTemplates(customTemplates.filter { it.isActive })
             showWelcomeSetup = true
             onboardingSkipIntroDefault = false
-            snackbarHostState.showSnackbar("Reset complete. Default pack enabled.")
+            snackbarHostState.showSnackbar(getString(R.string.snackbar_reset_complete))
         }
     }
 
@@ -3323,13 +3507,13 @@ FINAL OUTPUT:
                         }
                         scope.launch { appContext.dataStore.edit { p -> p[activePacksKey] = activePackageIds.joinToString(",") } }
 
-                        scope.launch { snackbarHostState.showSnackbar("Theme & Quests Applied!") }
+                        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_theme_applied)) }
                         promptApplyTemplate = null
                     }) { Text(stringResource(R.string.l10n_yes_equip_now), color = accentStrong) }
                 },
                 dismissButton = {
                     TextButton(onClick = {
-                        scope.launch { snackbarHostState.showSnackbar("Template saved.") }
+                        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_template_saved)) }
                         promptApplyTemplate = null
                     }) { Text(stringResource(R.string.l10n_no_later), color = OnCardText) }
                 }
@@ -3504,20 +3688,25 @@ FINAL OUTPUT:
                                                    savedTemplates = savedTemplates,
                                                    activePackageIds = activePackageIds, // NEW
                                                    onTogglePackage = { t, b -> onTogglePackage(t, b) }, // NEW
-                                                   onUpsertDaily = { t ->
-                                                       if (!customMode) {
-                                                           scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
-                                                           return@QuestsScreen
-                                                       }
-                                                       val list = customTemplates.toMutableList()
-                                                       val idx = list.indexOfFirst { it.id == t.id }
-                                                       val oldTemplate = if (idx >= 0) list[idx] else null
-                                                       val isNewTemplate = idx < 0
-                                                       if (idx >= 0) list[idx] = t else list.add(t)
-                                                       persistCustomTemplates(list)
-                                                       if (isNewTemplate) {
-                                                           regenerateForDay(currentEpochDay())
-                                                       } else if (oldTemplate != null) {
+                                                    onUpsertDaily = { t ->
+                                                        if (!customMode) {
+                                                            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_custom_mode_required)) }
+                                                            return@QuestsScreen
+                                                        }
+                                                        val safeTemplate = sanitizeHealthTemplateOrNull(t)
+                                                        if (safeTemplate == null) {
+                                                            scope.launch { snackbarHostState.showSnackbar("Invalid health quest metric. Use steps, heart_rate, distance_m, or calories_kcal.") }
+                                                            return@QuestsScreen
+                                                        }
+                                                        val list = customTemplates.toMutableList()
+                                                        val idx = list.indexOfFirst { it.id == safeTemplate.id }
+                                                        val oldTemplate = if (idx >= 0) list[idx] else null
+                                                        val isNewTemplate = idx < 0
+                                                        if (idx >= 0) list[idx] = safeTemplate else list.add(safeTemplate)
+                                                        persistCustomTemplates(list)
+                                                        if (isNewTemplate) {
+                                                            regenerateForDay(currentEpochDay())
+                                                        } else if (oldTemplate != null) {
                                                            fun stableId(template: CustomTemplate): Int {
                                                                val qt = QuestTemplate(
                                                                    category = template.category,
@@ -3544,29 +3733,29 @@ FINAL OUTPUT:
                                                                        q.packageId == oldTemplate.packageId)
                                                            }
                                                            if (matchIndex >= 0) {
-                                                               val newQuestId = stableId(t)
-                                                               val existing = quests[matchIndex]
-                                                               val nextTarget = when (t.objectiveType) {
-                                                                   QuestObjectiveType.TIMER -> (t.targetSeconds ?: t.target).coerceAtLeast(60)
-                                                                   QuestObjectiveType.HEALTH -> t.target.coerceAtLeast(100)
-                                                                   QuestObjectiveType.COUNT -> t.target.coerceAtLeast(1)
-                                                               }
-                                                               val updatedQuest = existing.copy(
-                                                                   id = newQuestId,
-                                                                   title = t.title,
-                                                                   xpReward = t.xp,
-                                                                   icon = t.icon,
-                                                                   category = t.category,
-                                                                   difficulty = t.difficulty,
-                                                                   target = nextTarget,
-                                                                   currentProgress = if (existing.completed) nextTarget else existing.currentProgress.coerceAtMost(nextTarget),
-                                                                   imageUri = t.imageUri,
-                                                                   packageId = t.packageId,
-                                                                   objectiveType = t.objectiveType,
-                                                                   targetSeconds = if (t.objectiveType == QuestObjectiveType.TIMER) nextTarget else null,
-                                                                   healthMetric = if (t.objectiveType == QuestObjectiveType.HEALTH) t.healthMetric else null,
-                                                                   healthAggregation = if (t.objectiveType == QuestObjectiveType.HEALTH) (t.healthAggregation ?: "daily_total") else null
-                                                               )
+                                                                val newQuestId = stableId(safeTemplate)
+                                                                val existing = quests[matchIndex]
+                                                                val nextTarget = when (safeTemplate.objectiveType) {
+                                                                    QuestObjectiveType.TIMER -> (safeTemplate.targetSeconds ?: safeTemplate.target).coerceAtLeast(60)
+                                                                    QuestObjectiveType.HEALTH -> safeTemplate.target.coerceAtLeast(100)
+                                                                    QuestObjectiveType.COUNT -> safeTemplate.target.coerceAtLeast(1)
+                                                                }
+                                                                val updatedQuest = existing.copy(
+                                                                    id = newQuestId,
+                                                                    title = safeTemplate.title,
+                                                                    xpReward = safeTemplate.xp,
+                                                                    icon = safeTemplate.icon,
+                                                                    category = safeTemplate.category,
+                                                                    difficulty = safeTemplate.difficulty,
+                                                                    target = nextTarget,
+                                                                    currentProgress = if (existing.completed) nextTarget else existing.currentProgress.coerceAtMost(nextTarget),
+                                                                    imageUri = safeTemplate.imageUri,
+                                                                    packageId = safeTemplate.packageId,
+                                                                    objectiveType = safeTemplate.objectiveType,
+                                                                    targetSeconds = if (safeTemplate.objectiveType == QuestObjectiveType.TIMER) nextTarget else null,
+                                                                    healthMetric = if (safeTemplate.objectiveType == QuestObjectiveType.HEALTH) safeTemplate.healthMetric else null,
+                                                                    healthAggregation = if (safeTemplate.objectiveType == QuestObjectiveType.HEALTH) (safeTemplate.healthAggregation ?: "daily_total") else null
+                                                                )
                                                                val nextQuests = quests.toMutableList()
                                                                nextQuests[matchIndex] = updatedQuest
                                                                quests = nextQuests
@@ -3578,36 +3767,36 @@ FINAL OUTPUT:
                                                                updateHistory(lastDayEpoch, base, completedIds)
                                                            }
                                                        }
-                                                       scope.launch { snackbarHostState.showSnackbar("Daily quest saved.") }
+                                                        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_daily_quest_saved)) }
                                                    },
                                                    onDeleteDaily = { id ->
                                                        if (!customMode) {
-                                                           scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+                                                           scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_custom_mode_required)) }
                                                            return@QuestsScreen
                                                        }
                                                        val list = customTemplates.filterNot { it.id == id }
                                                        persistCustomTemplates(list)
-                                                       scope.launch { snackbarHostState.showSnackbar("Daily quest deleted.") }
+                                                            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_daily_quest_deleted)) }
                                                    },
                                                    onUpsertMain = { mq ->
                                                        if (!customMode) {
-                                                           scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+                                                           scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_custom_mode_required)) }
                                                            return@QuestsScreen
                                                        }
                                                        val list = mainQuests.toMutableList()
                                                        val idx = list.indexOfFirst { it.id == mq.id }
                                                        if (idx >= 0) list[idx] = mq else list.add(mq)
                                                        persistMainQuests(list)
-                                                       scope.launch { snackbarHostState.showSnackbar("Main quest saved.") }
+                                                        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_main_quest_saved)) }
                                                    },
                                                    onDeleteMain = { id ->
                                                        if (!customMode) {
-                                                           scope.launch { snackbarHostState.showSnackbar("Enable Custom Mode in Settings.") }
+                                                           scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_custom_mode_required)) }
                                                            return@QuestsScreen
                                                        }
                                                        val list = mainQuests.filterNot { it.id == id }
                                                        persistMainQuests(list)
-                                                       scope.launch { snackbarHostState.showSnackbar("Main quest deleted.") }
+                                                            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_main_quest_deleted)) }
                                                    },
                                                    onRestoreDefaults = { restoreDefaultQuests() },
                                                    onExportTemplate = { templateName ->
@@ -3623,7 +3812,7 @@ FINAL OUTPUT:
                                                        val compressedPayload = exportGameTemplate(template)
                                                        val link = "https://qn8r.github.io/Questify/?data=$compressedPayload"
                                                        val sendIntent = Intent().apply { action = Intent.ACTION_SEND; putExtra(Intent.EXTRA_TEXT, "Check out my Questify Template: $templateName!\n\n$link"); type = "text/plain" }
-                                                       appContext.startActivity(Intent.createChooser(sendIntent, "Share Template"))
+                                                       appContext.startActivity(Intent.createChooser(sendIntent, getString(R.string.share_template)))
                                                    },
                                                    onSaveCurrentToLibrary = { templateName ->
                                                        val template = GameTemplate(
@@ -3636,11 +3825,11 @@ FINAL OUTPUT:
                                                            accentArgb = accent.toArgbCompat().toLong()
                                                        )
                                                        persistSavedTemplates(savedTemplates + template)
-                                                       scope.launch { snackbarHostState.showSnackbar("Template saved.") }
+                                                       scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_template_saved)) }
                                                    },
                                                    onApplySavedTemplate = { t, backupName, clearExisting -> // UPDATED: Added clearExisting
                                                        val safeTemplate = runCatching { normalizeGameTemplateSafe(t) }.getOrElse {
-                                                           scope.launch { snackbarHostState.showSnackbar("Template is incompatible. Re-export it from latest app version.") }
+                                                            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_incompatible_template)) }
                                                            return@QuestsScreen
                                                        }
                                                        if (!backupName.isNullOrBlank()) {
@@ -3715,7 +3904,7 @@ FINAL OUTPUT:
                                                     onDeleteCategory = { cat ->
                                                         val list = customTemplates.filterNot { it.category == cat }
                                                         persistCustomTemplates(list)
-                                                        scope.launch { snackbarHostState.showSnackbar(appContext.getString(R.string.all_category_quests_deleted, cat.name)) }
+                                                        scope.launch { snackbarHostState.showSnackbar(getString(R.string.all_category_quests_deleted, categoryLabel(cat))) }
                                                     },
                                                    onDeleteChain = { family ->
                                                        fun parseFamily(title: String): String {
@@ -3725,7 +3914,7 @@ FINAL OUTPUT:
                                                        val familyKey = parseFamily(family).lowercase(java.util.Locale.getDefault())
                                                        val list = mainQuests.filterNot { parseFamily(it.title).lowercase(java.util.Locale.getDefault()) == familyKey }
                                                        persistMainQuests(list)
-                                                       scope.launch { snackbarHostState.showSnackbar("All \"$family\" quests deleted.") }
+                                                        scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_family_quests_deleted, family)) }
                                                    },
                                                    onOpenCommunityTemplates = { screen = Screen.COMMUNITY },
                                                    onOpenAdvancedTemplates = {
@@ -3880,14 +4069,14 @@ FINAL OUTPUT:
                                                    onExportBackup = {
                                                        val blob = exportBackupPayload()
                                                        if (blob.isBlank()) {
-                                                           scope.launch { snackbarHostState.showSnackbar("Backup export failed.") }
+                                                            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_backup_export_failed)) }
                                                        } else {
                                                            val sendIntent = Intent().apply {
                                                                action = Intent.ACTION_SEND
                                                                putExtra(Intent.EXTRA_TEXT, blob)
                                                                type = "text/plain"
                                                            }
-                                                           appContext.startActivity(Intent.createChooser(sendIntent, "Export Encrypted Backup"))
+                                                           appContext.startActivity(Intent.createChooser(sendIntent, getString(R.string.settings_export_backup)))
                                                        }
                                                    },
                                                    onImportBackup = {
@@ -3906,7 +4095,7 @@ FINAL OUTPUT:
                                                            putExtra(Intent.EXTRA_TEXT, AppLog.exportRecentLogs().ifBlank { "No logs captured." })
                                                            type = "text/plain"
                                                        }
-                                                       appContext.startActivity(Intent.createChooser(sendIntent, "Export Logs"))
+                                                       appContext.startActivity(Intent.createChooser(sendIntent, getString(R.string.settings_export_logs)))
                                                    },
                                                    onBuildAdvancedTemplateStarterJson = { buildAdvancedTemplateStarterJson() },
                                                    onBuildAdvancedTemplatePromptFromRequest = { request, allowThemeChanges ->
@@ -3924,7 +4113,7 @@ FINAL OUTPUT:
                                                    onApplyAdvancedTemplateByPackage = { pkg ->
                                                        val ok = applyAdvancedImportedTemplate(pkg)
                                                        if (ok) {
-                                                           scope.launch { snackbarHostState.showSnackbar("Advanced template applied.") }
+                                                            scope.launch { snackbarHostState.showSnackbar(getString(R.string.snackbar_advanced_template_applied)) }
                                                        }
                                                        ok
                                                    },
@@ -3993,6 +4182,10 @@ FINAL OUTPUT:
                                 { id, prog -> onTimerTickProgress(id, prog) },
                                 { id, prog -> onTimerComplete(id, prog) },
                                 { flushTimerPersist() },
+                                { snapshot, startedQuestId ->
+                                    persistHealthDailySnapshot(snapshot)
+                                    syncHealthObjectiveQuestProgress(snapshot, startedQuestId)
+                                },
                                 { id -> onResetQuestProgressWithUndo(id) },
                                 { id -> onRemoveQuestFromToday(id) },
                                 { id -> onOpenQuestEditorFromHome(id) },
