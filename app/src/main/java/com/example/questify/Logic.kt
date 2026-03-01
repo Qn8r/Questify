@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import java.text.SimpleDateFormat
 import java.util.Calendar

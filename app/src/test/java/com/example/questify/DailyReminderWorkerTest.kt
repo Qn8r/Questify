@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import org.junit.Assert.assertTrue
 import org.junit.Test

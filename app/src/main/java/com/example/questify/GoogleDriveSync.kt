@@ -1,6 +1,6 @@
 @file:Suppress("DEPRECATION")
 
-package com.example.livinglifemmo
+package com.example.questify
 
 import android.content.Context
 import android.content.Intent
@@ -14,7 +14,6 @@ import com.google.android.gms.common.api.Scope
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder

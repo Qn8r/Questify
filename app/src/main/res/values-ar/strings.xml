@@ -894,5 +894,34 @@
     <string name="trend_up">صاعد</string>
     <string name="trend_down">هابط</string>
     <string name="theme_glass_drift_subtitle">طبقات زجاجية شفافة فوق خلفيات طبيعية</string>
+    <string name="journal_default_name">يوميات</string>
+    <string name="voice_note_default_name">تسجيل صوتي %1$d</string>
+    <string name="player_default_name">لاعب</string>
+    <string name="backup_unnamed">نسخة احتياطية بدون اسم</string>
+    <string name="ai_template_prefix">قالب ذكاء اصطناعي</string>
+    <string name="challenge_by_prefix">تحدي مجتمعي بواسطة %1$s</string>
+    <string name="snackbar_template_applied_library">تم حفظ القالب في المكتبة</string>
+    <string name="import_error_empty">الملف فارغ.</string>
+    <string name="import_error_invalid_json">تنسيق JSON غير صالح.</string>
+    <string name="import_error_unsupported_schema">إصدار مخطط غير مدعوم %1$d.</string>
+    <string name="import_warning_legacy">تم اكتشاف إصدار مخطط قديم %1$d.</string>
+    <string name="import_warning_daily_capped">تم تقييد المهام اليومية بـ %1$d.</string>
+    <string name="import_warning_main_capped">تم تقييد المهام الرئيسية بـ %1$d.</string>
+    <string name="import_warning_shop_capped">تم تقييد عناصر المتجر بـ %1$d.</string>
+    <string name="import_warning_title_missing">%1$s[%2$d] تخطي: العنوان مفقود.</string>
+    <string name="import_warning_category_invalid">%1$s[%2$d] تخطي: فئة غير صالحة \'%3$s\'.</string>
+    <string name="import_info_hard_caps">القيود القصوى: اليومية &lt;= %1$d، الرئيسية &lt;= %2$d، المتجر &lt;= %3$d.</string>
+    <string name="import_info_theme_enabled">إنشاء السيم مفعّل.</string>
+    <string name="import_info_theme_disabled">إنشاء السيم معطل.</string>
+    <string name="import_info_daily_target">هدف المهام اليومية: %1$d.</string>
+    <string name="import_info_main_target">هدف المهام الرئيسية: %1$d.</string>
+    <string name="import_info_shop_target">هدف عناصر المتجر: %1$d.</string>
+    <string name="import_info_daily_range_capped">تم تقييد طلب اليومية من %1$d إلى %2$d.</string>
+    <string name="import_info_main_range_capped">تم تقييد طلب الرئيسية من %1$d إلى %2$d.</string>
+    <string name="import_info_shop_range_capped">تم تقييد طلب المتجر من %1$d إلى %2$d.</string>
+    <string name="import_rule_theme_allowed">يمكنك تعديل المهام اليومية، والمهام الرئيسية، وعناصر المتجر، وسيم التطبيق، ولون التمييز، وإعدادات القالب.</string>
+    <string name="import_rule_theme_denied">يمكنك تعديل المهام اليومية، والمهام الرئيسية، وعناصر المتجر فقط. حافظ على سيم التطبيق ولون التمييز وإعدادات القالب دون تغيير.</string>
+    <string name="import_policy_theme_allowed">يُسمح بتغييرات السيم عندما تساعد في تلبية طلب المستخدم.</string>
+    <string name="import_policy_theme_denied">لا يُسمح بتغييرات السيم لهذه المرة. لا تقم بتعديل سيم التطبيق أو لون التمييز أو إعدادات القالب.</string>
 </resources>
 

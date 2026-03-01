@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 object CommunityCoordinator {
     private val blockedTokens = listOf("<script", "javascript:", "data:text/html", "file://", "intent://")

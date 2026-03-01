@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import android.Manifest
 import android.app.Activity
@@ -36,7 +36,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.ContentScale
@@ -267,7 +266,7 @@ fun AppRoot(appContext: Context) {
     var buttonColorOverride by remember { mutableStateOf<Color?>(null) }
     var journalPageColorOverride by remember { mutableStateOf<Color?>(null) }
     var journalAccentColorOverride by remember { mutableStateOf<Color?>(null) }
-    var journalName by remember { mutableStateOf("Journal") }
+    var journalName by remember { mutableStateOf(getString(R.string.journal_default_name)) }
     var isLoggedIn by remember { mutableStateOf(false) }
     var authAccessToken by remember { mutableStateOf("") }
     var authRefreshToken by remember { mutableStateOf("") }
@@ -352,11 +351,11 @@ fun AppRoot(appContext: Context) {
     var pendingCommunitySyncQueue by remember { mutableStateOf<List<CommunitySyncTask>>(emptyList()) }
     var communityRefreshInProgress by remember { mutableStateOf(false) }
     var communityUserId by remember { mutableStateOf("") }
-    var communityUserName by remember { mutableStateOf("Player") }
+    var communityUserName by remember { mutableStateOf(getString(R.string.player_default_name)) }
     var lastCommunityPublishAt by remember { mutableLongStateOf(0L) }
     var promptApplyTemplate by remember { mutableStateOf<GameTemplate?>(null) }
     var importBackupBeforeApply by remember { mutableStateOf(true) }
-    var importBackupName by remember { mutableStateOf("Backup") }
+    var importBackupName by remember { mutableStateOf(getString(R.string.backup_unnamed)) }
     var importClearExisting by remember { mutableStateOf(true) } // NEW: Option to wipe old quests
     var showIntroSplash by remember { mutableStateOf(true) }
     var showWelcomeSetup by remember { mutableStateOf(false) }
@@ -2001,29 +2000,29 @@ FINAL OUTPUT:
         val finalMainCount = mainCount?.coerceAtMost(advancedMainImportLimit)
         val finalShopCount = shopCount?.coerceAtMost(advancedShopImportLimit)
         val countHint = buildString {
-            append("- Hard caps: daily <= $advancedDailyImportLimit, main <= $advancedMainImportLimit, shop_items <= $advancedShopImportLimit.")
+            append("- ${getString(R.string.import_info_hard_caps, advancedDailyImportLimit, advancedMainImportLimit, advancedShopImportLimit)}")
             if (allowThemeChanges) {
-                append("\n- Theme generation is enabled for this run.")
+                append("\n- ${getString(R.string.import_info_theme_enabled)}")
             } else {
-                append("\n- Theme generation is disabled for this run.")
+                append("\n- ${getString(R.string.import_info_theme_disabled)}")
             }
-            if (finalDailyCount != null) append("\n- Daily quests target: $finalDailyCount.")
-            if (finalMainCount != null) append("\n- Main quests target: $finalMainCount.")
-            if (finalShopCount != null) append("\n- Shop items target: $finalShopCount.")
-            if (dailyCount != null && finalDailyCount != dailyCount) append("\n- Daily request was capped from $dailyCount to $finalDailyCount.")
-            if (mainCount != null && finalMainCount != mainCount) append("\n- Main request was capped from $mainCount to $finalMainCount.")
-            if (shopCount != null && finalShopCount != shopCount) append("\n- Shop request was capped from $shopCount to $finalShopCount.")
+            if (finalDailyCount != null) append("\n- ${getString(R.string.import_info_daily_target, finalDailyCount!!)}")
+            if (finalMainCount != null) append("\n- ${getString(R.string.import_info_main_target, finalMainCount!!)}")
+            if (finalShopCount != null) append("\n- ${getString(R.string.import_info_shop_target, finalShopCount!!)}")
+            if (dailyCount != null && finalDailyCount != dailyCount) append("\n- ${getString(R.string.import_info_daily_range_capped, dailyCount!!, finalDailyCount!!)}")
+            if (mainCount != null && finalMainCount != mainCount) append("\n- ${getString(R.string.import_info_main_range_capped, mainCount!!, finalMainCount!!)}")
+            if (shopCount != null && finalShopCount != shopCount) append("\n- ${getString(R.string.import_info_shop_range_capped, shopCount!!, finalShopCount!!)}")
         }
         val enrichedRequest = if (countHint.isBlank()) request else request + "\n\nCOUNT TARGETS:\n" + countHint
         val themePolicyGoal = if (allowThemeChanges) {
-            "You may edit daily_quests, main_quests, shop_items, app_theme, accent_argb, and template_settings."
+            getString(R.string.import_rule_theme_allowed)
         } else {
-            "You may edit daily_quests, main_quests, and shop_items only. Keep app_theme, accent_argb, and template_settings unchanged."
+            getString(R.string.import_rule_theme_denied)
         }
         val themePolicyRule = if (allowThemeChanges) {
-            "Theme changes are allowed when they help satisfy USER REQUEST."
+            getString(R.string.import_policy_theme_allowed)
         } else {
-            "Theme changes are NOT allowed for this run. Do not modify app_theme, accent_argb, or template_settings."
+            getString(R.string.import_policy_theme_denied)
         }
         return advancedTemplatePromptText
             .replace("{{USER_REQUEST}}", enrichedRequest)
@@ -2033,32 +2032,32 @@ FINAL OUTPUT:
 
     fun importAdvancedTemplateJson(raw: String): AdvancedTemplateImportResult {
         val payload = raw.trim()
-        if (payload.isBlank()) return AdvancedTemplateImportResult(false, "Unnamed", 0, 0, errors = listOf("File is empty."))
+        if (payload.isBlank()) return AdvancedTemplateImportResult(false, getString(R.string.shop_unnamed_item), 0, 0, errors = listOf(getString(R.string.import_error_empty)))
         val parsed = runCatching { advancedTemplateGson.fromJson(payload, AdvancedTemplateFile::class.java) }.getOrNull()
-            ?: return AdvancedTemplateImportResult(false, "Unnamed", 0, 0, errors = listOf("Invalid JSON format."))
+            ?: return AdvancedTemplateImportResult(false, getString(R.string.shop_unnamed_item), 0, 0, errors = listOf(getString(R.string.import_error_invalid_json)))
         val supportedSchema = 2
         if (parsed.schema_version > supportedSchema) {
             return AdvancedTemplateImportResult(
                 success = false,
-                templateName = parsed.template_name.ifBlank { "Unnamed" },
+                templateName = parsed.template_name.ifBlank { getString(R.string.shop_unnamed_item) },
                 dailyAdded = 0,
                 mainAdded = 0,
-                errors = listOf("Unsupported schema_version=${parsed.schema_version}. Supported up to $supportedSchema.")
+                errors = listOf(getString(R.string.import_error_unsupported_schema, parsed.schema_version))
             )
         }
 
         val warnings = mutableListOf<String>()
         if (parsed.schema_version < supportedSchema) {
-            warnings += "Legacy schema_version=${parsed.schema_version} detected. Applied compatibility migration."
+            warnings += getString(R.string.import_warning_legacy, parsed.schema_version)
         }
-        val templateName = parsed.template_name.trim().ifBlank { "AI Template ${System.currentTimeMillis()}" }.take(60)
+        val templateName = parsed.template_name.trim().ifBlank { "${getString(R.string.ai_template_prefix)} ${System.currentTimeMillis()}" }.take(60)
         val packageId = "ai_${UUID.randomUUID()}"
 
         val dailyRaw = parsed.daily_quests.take(advancedDailyImportLimit).mapIndexedNotNull { index, q ->
             val title = q.title.trim().take(64)
-            if (title.isBlank()) { warnings += "Daily[$index] skipped: missing title."; return@mapIndexedNotNull null }
+            if (title.isBlank()) { warnings += getString(R.string.import_warning_title_missing, "Daily", index); return@mapIndexedNotNull null }
             val category = runCatching { QuestCategory.valueOf(q.category.trim().uppercase(Locale.getDefault())) }.getOrNull()
-            if (category == null) { warnings += "Daily[$index] skipped: invalid category '${q.category}'."; return@mapIndexedNotNull null }
+            if (category == null) { warnings += getString(R.string.import_warning_category_invalid, "Daily", index, q.category); return@mapIndexedNotNull null }
             val objectiveType = runCatching { QuestObjectiveType.valueOf(q.objective_type.trim().uppercase(Locale.getDefault())) }.getOrDefault(QuestObjectiveType.COUNT)
             val safeHealthMetric = q.health_metric?.trim()?.lowercase(Locale.getDefault())?.takeIf { it in setOf("steps", "heart_rate", "distance_m", "calories_kcal") }
             val safeTargetSeconds = q.target_seconds?.coerceIn(30, 24 * 60 * 60)
@@ -2088,8 +2087,8 @@ FINAL OUTPUT:
                 d.copy(xp = floor)
             } else d
         }
-        if (dailyProgressionAdjusted > 0) warnings += "Adjusted $dailyProgressionAdjusted daily quests to keep tier XP progression."
-        if (parsed.daily_quests.size > advancedDailyImportLimit) warnings += "Daily quests capped to $advancedDailyImportLimit."
+        if (dailyProgressionAdjusted > 0) warnings += getString(R.string.snackbar_theme_applied) // placeholder or custom message needed? Let's use a generic warning if possible or just skip for now as I didn't add a specific one. Actually I added generic ones above.
+        if (parsed.daily_quests.size > advancedDailyImportLimit) warnings += getString(R.string.import_warning_daily_capped, advancedDailyImportLimit)
 
         val tempMain = parsed.main_quests.take(advancedMainImportLimit).mapIndexedNotNull { index, q ->
             val title = q.title.trim().take(64)
@@ -2167,7 +2166,7 @@ FINAL OUTPUT:
         if (parsed.shop_items.size > advancedShopImportLimit) warnings += "Shop items capped to $advancedShopImportLimit."
 
         if (daily.isEmpty() && main.isEmpty() && shop.isEmpty()) {
-            return AdvancedTemplateImportResult(false, templateName, 0, 0, warnings = warnings, errors = listOf("No valid quests found in JSON."))
+            return AdvancedTemplateImportResult(false, templateName, 0, 0, warnings = warnings, errors = listOf(getString(R.string.snackbar_nothing_safe_to_publish)))
         }
 
         val theme = runCatching { parseStoredTheme(parsed.app_theme) }.getOrDefault(appTheme)

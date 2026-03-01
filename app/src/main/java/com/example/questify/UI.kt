@@ -12,7 +12,7 @@
     "RemoveRedundantQualifierName"
 )
 
-package com.example.livinglifemmo
+package com.example.questify
 import androidx.compose.animation.core.*
 import androidx.compose.ui.draw.rotate
 import android.graphics.Bitmap
@@ -1854,7 +1854,7 @@ fun JournalScreen(
                                                             verticalAlignment = Alignment.CenterVertically
                                                         ) {
                                                             val submittedLabel = voiceSubmittedAt[uri]?.let { runCatching { shortDateTimeFormatter.format(java.util.Date(it)) }.getOrNull() }.orEmpty()
-                                                            val defaultName = "Voice ${voiceIndex + 1}"
+                                                            val defaultName = stringResource(R.string.voice_note_default_name, voiceIndex + 1)
                                                             val displayName = voiceNames[uri]?.takeIf { it.isNotBlank() } ?: defaultName
                                                             Column(modifier = Modifier.weight(1f)) {
                                                                 Text(displayName, color = fieldText, fontSize = (12.sp * uiScale))
@@ -2176,7 +2176,7 @@ fun JournalScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    onJournalNameChanged(journalNameDraft.trim().ifBlank { "Journal" })
+                    onJournalNameChanged(journalNameDraft.trim().ifBlank { context.getString(R.string.journal_default_name) })
                     showJournalNameEditor = false
                 }) { Text(stringResource(R.string.save), color = accentSoft) }
             },

@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import androidx.datastore.preferences.core.edit
 import androidx.test.platform.app.InstrumentationRegistry

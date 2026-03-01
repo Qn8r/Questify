@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import android.net.Uri
 import com.google.gson.annotations.SerializedName

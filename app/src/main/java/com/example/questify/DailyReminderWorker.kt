@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import android.app.NotificationChannel
 import android.app.NotificationManager

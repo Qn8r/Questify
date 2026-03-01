@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import com.google.gson.Gson
 import com.google.gson.JsonElement

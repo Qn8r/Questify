@@ -905,5 +905,34 @@ Check back soon!</string>
     <string name="trend_up">Up</string>
     <string name="trend_down">Down</string>
     <string name="theme_glass_drift_subtitle">Transparent glass layers over scenic backgrounds</string>
+    <string name="journal_default_name">Journal</string>
+    <string name="voice_note_default_name">Voice %1$d</string>
+    <string name="player_default_name">Player</string>
+    <string name="backup_unnamed">Unnamed Backup</string>
+    <string name="ai_template_prefix">AI Template</string>
+    <string name="challenge_by_prefix">Community challenge by %1$s</string>
+    <string name="snackbar_template_applied_library">Template saved to library</string>
+    <string name="import_error_empty">File is empty.</string>
+    <string name="import_error_invalid_json">Invalid JSON format.</string>
+    <string name="import_error_unsupported_schema">Unsupported schema version %1$d.</string>
+    <string name="import_warning_legacy">Legacy schema_version=%1$d detected.</string>
+    <string name="import_warning_daily_capped">Daily quests capped to %1$d.</string>
+    <string name="import_warning_main_capped">Main quests capped to %1$d.</string>
+    <string name="import_warning_shop_capped">Shop items capped to %1$d.</string>
+    <string name="import_warning_title_missing">%1$s[%2$d] skipped: missing title.</string>
+    <string name="import_warning_category_invalid">%1$s[%2$d] skipped: invalid category \'%3$s\'.</string>
+    <string name="import_info_hard_caps">Hard caps: daily &lt;= %1$d, main &lt;= %2$d, shop_items &lt;= %3$d.</string>
+    <string name="import_info_theme_enabled">Theme generation is enabled.</string>
+    <string name="import_info_theme_disabled">Theme generation is disabled.</string>
+    <string name="import_info_daily_target">Daily quests target: %1$d.</string>
+    <string name="import_info_main_target">Main quests target: %1$d.</string>
+    <string name="import_info_shop_target">Shop items target: %1$d.</string>
+    <string name="import_info_daily_range_capped">Daily request was capped from %1$d to %2$d.</string>
+    <string name="import_info_main_range_capped">Main request was capped from %1$d to %2$d.</string>
+    <string name="import_info_shop_range_capped">Shop request was capped from %1$d to %2$d.</string>
+    <string name="import_rule_theme_allowed">You may edit daily_quests, main_quests, shop_items, app_theme, accent_argb, and template_settings.</string>
+    <string name="import_rule_theme_denied">You may edit daily_quests, main_quests, and shop_items only. Keep app_theme, accent_argb, and template_settings unchanged.</string>
+    <string name="import_policy_theme_allowed">Theme changes are allowed when they help satisfy USER REQUEST.</string>
+    <string name="import_policy_theme_denied">Theme changes are NOT allowed for this run. Do not modify app_theme, accent_argb, or template_settings.</string>
 </resources>
 

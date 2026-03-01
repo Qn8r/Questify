@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule

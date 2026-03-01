@@ -1,4 +1,4 @@
-package com.example.livinglifemmo
+package com.example.questify
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography

@@ -15,11 +15,11 @@ val supabaseAnonKey = localProps.getProperty("SUPABASE_ANON_KEY", "")
 val googleWebClientId = localProps.getProperty("GOOGLE_WEB_CLIENT_ID", "")
 
 android {
-    namespace = "com.example.livinglifemmo"
+    namespace = "com.example.questify"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.example.livinglifemmo"
+        applicationId = "com.example.questify"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
