@@ -30,17 +30,22 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.*
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.FlingBehavior
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.snapping.SnapPosition
+import androidx.compose.foundation.gestures.snapping.rememberSnapFlingBehavior
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerSnapDistance
@@ -69,6 +74,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.TransformOrigin
@@ -2311,6 +2317,7 @@ fun CalendarScreen(
     var planMinute by rememberSaveable { mutableIntStateOf(0) }
     var planNoteDraft by rememberSaveable { mutableStateOf("") }
     var planTypeExpanded by rememberSaveable { mutableStateOf(false) }
+    var dialogUiScale by remember { mutableFloatStateOf(1f) }
     val planTypeGeneral = stringResource(R.string.plan_type_general)
     val planTypeWorkout = stringResource(R.string.plan_type_workout)
     val planTypeDeepWork = stringResource(R.string.plan_type_deep_work)
@@ -2371,6 +2378,7 @@ fun CalendarScreen(
     }
     val selectedDayPlans = remember(plans, selectedDay) { plans[selectedDay].orEmpty() }
     ScalableScreen(modifier) { uiScale ->
+        dialogUiScale = uiScale
         Column(verticalArrangement = Arrangement.spacedBy((6.dp * uiScale))) {
             ScalableHeader(
                 title = stringResource(R.string.title_calendar),
@@ -2530,33 +2538,43 @@ fun CalendarScreen(
             containerColor = CardDarkBlue,
             title = { Text(stringResource(R.string.l10n_add_plan), color = OnCardText, fontWeight = FontWeight.Bold) },
             text = {
+                val compactFieldHeight = 48.dp * dialogUiScale
+                val compactTextScale = 1.5f
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(stringResource(R.string.for_day_value, formatEpochDayFull(selectedDay)), color = accentStrong.copy(alpha = 0.95f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    OutlinedTextField(
+                    CompactOutlinedField(
                         value = planTitleDraft,
                         onValueChange = { planTitleDraft = it.take(64) },
-                        label = { Text(stringResource(R.string.l10n_title)) },
+                        label = stringResource(R.string.l10n_title),
+                        height = compactFieldHeight,
+                        uiScale = dialogUiScale * compactTextScale,
                         singleLine = true,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
+                        modifier = Modifier.fillMaxWidth()
                     )
-                    OutlinedArrowControlField(
+                    TimeWheelPicker(
                         label = stringResource(R.string.time_label),
-                        valueLabel = formattedPlanTime,
-                        onPrev = { shiftPlanTime(-5) },
-                        onNext = { shiftPlanTime(5) },
-                        minHeight = 46.dp
+                        hour24 = planHour,
+                        minute = planMinute,
+                        uiScale = dialogUiScale,
+                        onTimeChange = { nextHour, nextMinute ->
+                            planHour = nextHour
+                            planMinute = nextMinute
+                        }
                     )
+                    Spacer(Modifier.height(8.dp * dialogUiScale))
                     ExposedDropdownMenuBox(expanded = planTypeExpanded, onExpandedChange = { planTypeExpanded = !planTypeExpanded }) {
-                        OutlinedTextField(
+                        CompactOutlinedField(
                             value = selectedPlanType,
                             onValueChange = {},
+                            label = stringResource(R.string.l10n_type),
+                            height = compactFieldHeight,
+                            uiScale = dialogUiScale * compactTextScale,
+                            singleLine = true,
                             readOnly = true,
-                            label = { Text(stringResource(R.string.l10n_type)) },
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = planTypeExpanded) },
                             modifier = Modifier
                                 .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                                 .fillMaxWidth()
-                                .heightIn(min = 46.dp)
                         )
                         ExposedDropdownMenu(expanded = planTypeExpanded, onDismissRequest = { planTypeExpanded = false }) {
                             planTypes.forEach { type ->
@@ -2570,50 +2588,42 @@ fun CalendarScreen(
                             }
                         }
                     }
+                    Spacer(Modifier.height(8.dp * dialogUiScale))
                     Text(stringResource(R.string.l10n_options), color = OnCardText.copy(alpha = 0.72f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .border(1.dp, if (planSoundEnabled) accentStrong else OnCardText.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                                .background(if (planSoundEnabled) accentStrong.copy(alpha = 0.22f) else Color.Transparent)
-                                .clickable { planSoundEnabled = !planSoundEnabled },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (planSoundEnabled) Icon(Icons.Default.Check, null, tint = accentStrong, modifier = Modifier.size(12.dp))
-                        }
-                        Text(stringResource(R.string.l10n_alarm_sound), color = OnCardText.copy(alpha = 0.85f), modifier = Modifier.weight(1f), fontSize = 12.sp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(CardDarkBlue.copy(alpha = 0.35f)),
+                        verticalArrangement = Arrangement.spacedBy(4.dp * dialogUiScale)
+                    ) {
+                        PlanToggleRow(
+                            title = stringResource(R.string.l10n_alarm_sound),
+                            checked = planSoundEnabled,
+                            onCheckedChange = { planSoundEnabled = it },
+                            accent = accentStrong,
+                            showDivider = false,
+                            uiScale = dialogUiScale * compactTextScale
+                        )
+                        PlanToggleRow(
+                            title = stringResource(R.string.l10n_vibration),
+                            checked = planVibrationEnabled,
+                            onCheckedChange = { planVibrationEnabled = it },
+                            accent = accentStrong,
+                            showDivider = false,
+                            uiScale = dialogUiScale * compactTextScale
+                        )
+                        PlanToggleRow(
+                            title = stringResource(R.string.l10n_snooze),
+                            checked = planSnoozeEnabled,
+                            onCheckedChange = { planSnoozeEnabled = it },
+                            accent = accentStrong,
+                            showDivider = false,
+                            uiScale = dialogUiScale * compactTextScale
+                        )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .border(1.dp, if (planVibrationEnabled) accentStrong else OnCardText.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                                .background(if (planVibrationEnabled) accentStrong.copy(alpha = 0.22f) else Color.Transparent)
-                                .clickable { planVibrationEnabled = !planVibrationEnabled },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (planVibrationEnabled) Icon(Icons.Default.Check, null, tint = accentStrong, modifier = Modifier.size(12.dp))
-                        }
-                        Text(stringResource(R.string.l10n_vibration), color = OnCardText.copy(alpha = 0.85f), modifier = Modifier.weight(1f), fontSize = 12.sp)
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.fillMaxWidth()) {
-                        Box(
-                            modifier = Modifier
-                                .size(18.dp)
-                                .clip(RoundedCornerShape(4.dp))
-                                .border(1.dp, if (planSnoozeEnabled) accentStrong else OnCardText.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
-                                .background(if (planSnoozeEnabled) accentStrong.copy(alpha = 0.22f) else Color.Transparent)
-                                .clickable { planSnoozeEnabled = !planSnoozeEnabled },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            if (planSnoozeEnabled) Icon(Icons.Default.Check, null, tint = accentStrong, modifier = Modifier.size(12.dp))
-                        }
-                        Text(stringResource(R.string.l10n_snooze), color = OnCardText.copy(alpha = 0.85f), modifier = Modifier.weight(1f), fontSize = 12.sp)
-                    }
-                    OutlinedArrowControlField(
+                    Spacer(Modifier.height(8.dp * dialogUiScale))
+                    CompactOutlinedArrowField(
                         label = stringResource(R.string.reminder_label),
                         valueLabel = if (planReminderMinutes == 0) stringResource(R.string.off_label) else stringResource(R.string.reminder_m_before, planReminderMinutes),
                         onPrev = {
@@ -2624,14 +2634,18 @@ fun CalendarScreen(
                             val next = (reminderIndex + 1).coerceAtMost(reminderChoices.lastIndex)
                             planReminderMinutes = reminderChoices[next]
                         },
-                        minHeight = 46.dp
+                        height = compactFieldHeight,
+                        uiScale = dialogUiScale * compactTextScale
                     )
-                    OutlinedTextField(
+                    Spacer(Modifier.height(6.dp * dialogUiScale))
+                    CompactOutlinedField(
                         value = planNoteDraft,
                         onValueChange = { planNoteDraft = it.take(120) },
-                        label = { Text(stringResource(R.string.l10n_note)) },
-                        maxLines = 2,
-                        modifier = Modifier.fillMaxWidth().heightIn(min = 40.dp)
+                        label = stringResource(R.string.l10n_note),
+                        height = compactFieldHeight,
+                        uiScale = dialogUiScale * compactTextScale,
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
                 }
             },
@@ -8106,6 +8120,364 @@ private fun OutlinedArrowControlField(
                 cursorColor = accentForTheme()
             )
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompactOutlinedField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    height: Dp,
+    uiScale: Float,
+    modifier: Modifier = Modifier,
+    singleLine: Boolean = true,
+    readOnly: Boolean = false,
+    textAlign: TextAlign = TextAlign.Start,
+    leadingIcon: (@Composable (() -> Unit))? = null,
+    trailingIcon: (@Composable (() -> Unit))? = null
+) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val fontSizeBase = 9.sp * uiScale
+    val fontSize = if (fontSizeBase > 14.sp) 14.sp else fontSizeBase
+    val labelBase = 9.sp * uiScale
+    val labelSize = if (labelBase > 13.sp) 13.sp else labelBase
+    val colors = OutlinedTextFieldDefaults.colors(
+        focusedTextColor = OnCardText,
+        unfocusedTextColor = OnCardText,
+        focusedLabelColor = OnCardText.copy(alpha = 0.62f),
+        unfocusedLabelColor = OnCardText.copy(alpha = 0.62f),
+        focusedLeadingIconColor = OnCardText.copy(alpha = 0.9f),
+        unfocusedLeadingIconColor = OnCardText.copy(alpha = 0.85f),
+        focusedTrailingIconColor = OnCardText.copy(alpha = 0.9f),
+        unfocusedTrailingIconColor = OnCardText.copy(alpha = 0.85f),
+        cursorColor = accentForTheme()
+    )
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        readOnly = readOnly,
+        singleLine = singleLine,
+        textStyle = LocalTextStyle.current.copy(
+            color = OnCardText,
+            fontSize = fontSize,
+            fontWeight = FontWeight.Medium,
+            textAlign = textAlign
+        ),
+        cursorBrush = SolidColor(accentForTheme()),
+        interactionSource = interactionSource,
+        modifier = modifier.height(height)
+    ) { innerTextField ->
+        OutlinedTextFieldDefaults.DecorationBox(
+            value = value,
+            innerTextField = innerTextField,
+            enabled = true,
+            singleLine = singleLine,
+            visualTransformation = VisualTransformation.None,
+            interactionSource = interactionSource,
+            label = { Text(label, fontSize = labelSize) },
+            leadingIcon = leadingIcon,
+            trailingIcon = trailingIcon,
+            colors = colors,
+            contentPadding = PaddingValues(horizontal = 10.dp * uiScale, vertical = 2.dp * uiScale),
+            container = {
+                OutlinedTextFieldDefaults.ContainerBox(
+                    enabled = true,
+                    isError = false,
+                    interactionSource = interactionSource,
+                    colors = colors,
+                    shape = RoundedCornerShape(10.dp)
+                )
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CompactOutlinedArrowField(
+    label: String,
+    valueLabel: String,
+    onPrev: () -> Unit,
+    onNext: () -> Unit,
+    height: Dp,
+    uiScale: Float,
+    modifier: Modifier = Modifier
+) {
+    CompactOutlinedField(
+        value = valueLabel,
+        onValueChange = {},
+        label = label,
+        height = height,
+        uiScale = uiScale,
+        singleLine = true,
+        readOnly = true,
+        textAlign = TextAlign.Center,
+        leadingIcon = {
+            Box(
+                modifier = Modifier
+                    .size(20.dp * uiScale)
+                    .clip(CircleShape)
+                    .clickable(onClick = onPrev),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.previous_desc),
+                    tint = OnCardText.copy(alpha = 0.85f),
+                    modifier = Modifier.size(14.dp * uiScale)
+                )
+            }
+        },
+        trailingIcon = {
+            Box(
+                modifier = Modifier
+                    .size(20.dp * uiScale)
+                    .clip(CircleShape)
+                    .clickable(onClick = onNext),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = stringResource(R.string.next),
+                    tint = OnCardText.copy(alpha = 0.85f),
+                    modifier = Modifier.size(14.dp * uiScale)
+                )
+            }
+        },
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun TimeWheelPicker(
+    label: String,
+    hour24: Int,
+    minute: Int,
+    uiScale: Float,
+    onTimeChange: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val haptics = LocalHapticFeedback.current
+    val itemHeight = 40.dp * uiScale
+    val wheelHeight = itemHeight * 3
+    val hourValues = remember { (1..12).toList() }
+    val minuteValues = remember { (0..59).toList() }
+    val ampmValues = remember { listOf("AM", "PM") }
+    val virtualCount = 10000
+    fun startIndexFor(valuesSize: Int, selectedIndex: Int): Int {
+        val mid = virtualCount / 2
+        return mid - (mid % valuesSize) + selectedIndex
+    }
+
+    val hour12 = remember(hour24) { if (hour24 % 12 == 0) 12 else hour24 % 12 }
+    val ampmIndex = remember(hour24) { if (hour24 < 12) 0 else 1 }
+    val hourState = rememberLazyListState(initialFirstVisibleItemIndex = startIndexFor(hourValues.size, hourValues.indexOf(hour12).coerceAtLeast(0)))
+    val minuteState = rememberLazyListState(initialFirstVisibleItemIndex = startIndexFor(minuteValues.size, minute.coerceIn(0, 59)))
+    val ampmState = rememberLazyListState(initialFirstVisibleItemIndex = startIndexFor(ampmValues.size, ampmIndex))
+    val hourFling = rememberSnapFlingBehavior(hourState, snapPosition = SnapPosition.Center)
+    val minuteFling = rememberSnapFlingBehavior(minuteState, snapPosition = SnapPosition.Center)
+    val ampmFling = rememberSnapFlingBehavior(ampmState, snapPosition = SnapPosition.Center)
+
+    fun centeredIndex(state: LazyListState, itemCount: Int): Int {
+        val layout = state.layoutInfo
+        if (layout.visibleItemsInfo.isEmpty()) return 0
+        val center = (layout.viewportStartOffset + layout.viewportEndOffset) / 2
+        val closest = layout.visibleItemsInfo.minByOrNull { item ->
+            kotlin.math.abs((item.offset + item.size / 2) - center)
+        } ?: return 0
+        return closest.index.coerceIn(0, itemCount - 1)
+    }
+
+    val selectedHour by remember {
+        derivedStateOf { hourValues[centeredIndex(hourState, virtualCount) % hourValues.size] }
+    }
+    val selectedMinute by remember {
+        derivedStateOf { minuteValues[centeredIndex(minuteState, virtualCount) % minuteValues.size] }
+    }
+    val selectedAmPm by remember {
+        derivedStateOf { ampmValues[centeredIndex(ampmState, virtualCount) % ampmValues.size] }
+    }
+
+    LaunchedEffect(selectedHour, selectedMinute, selectedAmPm) {
+        val hour = when (selectedAmPm) {
+            "AM" -> if (selectedHour == 12) 0 else selectedHour
+            else -> if (selectedHour == 12) 12 else selectedHour + 12
+        }
+        onTimeChange(hour, selectedMinute)
+    }
+
+    LaunchedEffect(selectedHour, selectedMinute, selectedAmPm) {
+        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+    }
+
+    Column(modifier = modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(label, color = OnCardText.copy(alpha = 0.72f), fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(wheelHeight + (12.dp * uiScale))
+                .clip(RoundedCornerShape(18.dp))
+                .background(CardDarkBlue.copy(alpha = 0.45f))
+                .border(1.dp, OnCardText.copy(alpha = 0.18f), RoundedCornerShape(18.dp))
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp * uiScale, vertical = 6.dp * uiScale),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                WheelColumn(
+                    values = hourValues.map { it.toString() },
+                    repeatCount = virtualCount,
+                    state = hourState,
+                    flingBehavior = hourFling,
+                    itemHeight = itemHeight,
+                    wheelHeight = wheelHeight
+                )
+                Text(":", color = OnCardText.copy(alpha = 0.6f), fontSize = 18.sp * uiScale, fontWeight = FontWeight.Bold)
+                WheelColumn(
+                    values = minuteValues.map { value -> "%02d".format(value) },
+                    repeatCount = virtualCount,
+                    state = minuteState,
+                    flingBehavior = minuteFling,
+                    itemHeight = itemHeight,
+                    wheelHeight = wheelHeight
+                )
+                WheelColumn(
+                    values = ampmValues,
+                    repeatCount = virtualCount,
+                    state = ampmState,
+                    flingBehavior = ampmFling,
+                    itemHeight = itemHeight,
+                    wheelHeight = wheelHeight
+                )
+            }
+            val highlightHeight = itemHeight
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .fillMaxWidth()
+                    .height(highlightHeight)
+                    .padding(horizontal = 10.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color.White.copy(alpha = 0.08f))
+                    .border(1.dp, Color.White.copy(alpha = 0.16f), RoundedCornerShape(14.dp))
+            )
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(
+                        Brush.verticalGradient(
+                            0f to CardDarkBlue.copy(alpha = 0.78f),
+                            0.22f to Color.Transparent,
+                            0.78f to Color.Transparent,
+                            1f to CardDarkBlue.copy(alpha = 0.78f)
+                        )
+                    )
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun WheelColumn(
+    values: List<String>,
+    repeatCount: Int,
+    state: LazyListState,
+    flingBehavior: FlingBehavior,
+    itemHeight: Dp,
+    wheelHeight: Dp
+) {
+    val density = LocalDensity.current
+    val padding = itemHeight * 2
+    LazyColumn(
+        state = state,
+        flingBehavior = flingBehavior,
+        contentPadding = PaddingValues(vertical = padding),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier.width(56.dp).height(wheelHeight)
+    ) {
+        items(repeatCount) { index ->
+            val layout = state.layoutInfo
+            val center = (layout.viewportStartOffset + layout.viewportEndOffset) / 2f
+            val itemInfo = layout.visibleItemsInfo.firstOrNull { it.index == index }
+            val itemCenter = if (itemInfo != null) itemInfo.offset + (itemInfo.size / 2f) else center
+            val distance = kotlin.math.abs(itemCenter - center)
+            val maxDistance = with(density) { itemHeight.toPx() } * 2.2f
+            val fade = (1f - (distance / maxDistance)).coerceIn(0.22f, 1f)
+            val scale = (0.86f + (fade * 0.18f)).coerceIn(0.86f, 1.04f)
+            Box(
+                modifier = Modifier
+                    .height(itemHeight)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    values[index % values.size],
+                    color = OnCardText.copy(alpha = fade),
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.scale(scale)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlanToggleRow(
+    title: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    accent: Color,
+    showDivider: Boolean,
+    uiScale: Float
+) {
+    val baseSize = 9.sp * uiScale
+    val textSize = if (baseSize > 14.sp) 14.sp else baseSize
+    val density = LocalDensity.current
+    val textSizeDp = with(density) { textSize.toDp() }
+    val toggleWidth = textSizeDp * 2.6f
+    val toggleHeight = textSizeDp * 1.2f
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onCheckedChange(!checked) }
+                .padding(horizontal = 10.dp * uiScale, vertical = 3.dp * uiScale),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, color = OnCardText, fontSize = textSize, fontWeight = FontWeight.Medium)
+            }
+            Box(
+                modifier = Modifier
+                    .size(toggleWidth, toggleHeight),
+                contentAlignment = Alignment.Center
+            ) {
+                val scale = (toggleHeight / 20.dp).coerceAtMost(0.9f)
+                Switch(
+                    checked = checked,
+                    onCheckedChange = onCheckedChange,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = accent,
+                        checkedTrackColor = accent.copy(alpha = 0.4f),
+                        uncheckedThumbColor = OnCardText.copy(alpha = 0.6f),
+                        uncheckedTrackColor = CardDarkBlue.copy(alpha = 0.65f)
+                    ),
+                    modifier = Modifier.scale(scale)
+                )
+            }
+        }
+        if (showDivider) {
+            Divider(color = OnCardText.copy(alpha = 0.12f), thickness = 1.dp)
+        }
     }
 }
 
